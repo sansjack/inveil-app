@@ -13,9 +13,9 @@ Pushing a tag `vX.Y.Z` (stable) or `vX.Y.Z-rc.N` (beta channel) from `main` runs
 5. Signs the manifest in a minimal job that receives the unsigned manifest, the packaged binaries (downloaded by exact artifact name) and one update key from its own protected environment. Before any key is read it validates the manifest: version equals the tag, channel matches the tag kind (`-rc.N` is `beta`), threshold is at least 2, `expires_at` is 30 to 400 days away, every artifact URL is exactly `https://github.com/<repo>/releases/download/<tag>/<file>`, all six targets are present, and every `sha256` and `size` matches the packaged file it re-hashes. Anything else is refused and nothing is signed.
 6. Attaches build provenance attestations.
 7. Creates a draft GitHub Release with every file.
-8. Downloads the assets back in a job with the write token, hands them to unprivileged jobs on each OS, which re-check hashes and the manifest signature, run `install.sh` or `install.ps1` end to end against the draft, and run `inveil --version`. No job that executes a downloaded binary has a token. The install test needs the manifest's full signature threshold, so on a fresh draft that still awaits the maintainer's co-signature the last step of `verify-download` fails on purpose and says why (it never silently skips). Forks with `ALLOW_UNOFFICIAL_RELEASE=true` get a warning instead.
+8. Downloads the assets back in a job with the write token, hands them to unprivileged jobs on each OS, which re-check hashes and the manifest signature, run `install.sh` or `install.ps1` end to end against the draft, and run `inveil --version`. No job that executes a downloaded binary has a token. The install test needs the manifest's full signature threshold, so if the co-signature is missing the last step of `verify-download` fails and says why (it never silently skips). Forks with `ALLOW_UNOFFICIAL_RELEASE=true` get a warning instead.
 
-Publishing the draft is a manual click, after the offline co-signature (below). After publishing, run the `Verify published release` workflow ([`verify-published-release.yml`](../.github/workflows/verify-published-release.yml)); the release is not shipped until it passes. Beta tags produce `update-manifest-beta.json` only.
+Between steps 5 and 6, `cosign-manifest` adds the second update signature in its own environment and merges both into one envelope. After step 8 passes, `publish` waits for approval in `release-publish`, publishes the draft, and calls [`verify-published-release.yml`](../.github/workflows/verify-published-release.yml) against the published assets; if that fails, `unpublish-on-failure` turns the release back into a draft. Beta tags produce `update-manifest-beta.json` only.
 
 ## Before the first release
 
@@ -27,27 +27,29 @@ Keep the update key off every server that hosts files, and ideally in a hardware
 inveil keygen --out update.key
 ```
 
-It prints the public key and a suggested `key_id`. The private key file is base64 PKCS#8 text. Generate a second, separate key for the co-signature on a maintainer's hardware or offline machine the same way. Never reuse a policy (rules) key as an update key; their signing domains differ, but separate keys limit the damage of a leak.
+It prints the public key and a suggested `key_id`. The private key file is base64 PKCS#8 text. Generate a second, separate key for the co-signature the same way, on a different machine. Never reuse a policy (rules) key as an update key; their signing domains differ, but separate keys limit the damage of a leak.
 
-Official releases need two distinct keys: the CI key, and a second one that only a maintainer holds, on a hardware token or an offline machine. CI signs with the first; the maintainer adds the second with `inveil sign --role update --co-sign` before the draft is published. **CI never holds both keys for an official release**: `sign-manifest.sh` refuses to sign with more than one key unless `ALLOW_UNOFFICIAL_RELEASE=true`, and the workflow fails if `UPDATE_COSIGNING_KEY` is present in an official run. `UPDATE_COSIGNING_KEY` exists for forks only.
+Official releases need two distinct keys, and **no job or environment holds both**: `UPDATE_SIGNING_KEY` lives in `release-manifest-signing` and `UPDATE_COSIGNING_KEY` in `release-manifest-cosigning`. `sign-manifest.sh` refuses to sign with more than one key unless `ALLOW_UNOFFICIAL_RELEASE=true`, and `sign-manifest` fails if `UPDATE_COSIGNING_KEY` is present in its environment. See [THREAT_MODEL.md](THREAT_MODEL.md) R3 for what this separation does and does not protect against.
 
-### 2. Create the two signing environments
+### 2. Create the release environments
 
-Settings, Environments. Create two, so that approving one never exposes the other's secrets:
+Settings, Environments. Create four, so that approving one never exposes another's secrets:
 
 - `release-platform-signing`: used by the `sign-platform` job only. Holds the Apple and Windows identities.
-- `release-manifest-signing`: used by the `sign-manifest` job only. Holds the update key (`UPDATE_SIGNING_KEY`) and nothing else.
+- `release-manifest-signing`: used by the `sign-manifest` job only. Holds the first update key (`UPDATE_SIGNING_KEY`) and nothing else.
+- `release-manifest-cosigning`: used by the `cosign-manifest` job only. Holds the second update key (`UPDATE_COSIGNING_KEY`) and nothing else. Give it a different required reviewer from `release-manifest-signing` where you can.
+- `release-publish`: used by the `publish` job only. No secrets; its required reviewer is the "ship it" click after every verify-download job passed.
 
 Give each at least one required reviewer (prefer different people, and enable "prevent self-review"), and restrict deployment to the `main` branch and tags `v*`. Only the secrets below belong to these environments, not to the repository. The reviewer approving a release is approving a run of `.github/workflows/release.yml` and `.github/scripts/sign-manifest.sh` as they exist at the tag, so read the diff of both. Remember that a tag on an old commit runs that old commit's workflow: the tip-of-`main` check in `preflight` is defence in depth, not a boundary, and only the tag ruleset (see "Repository settings") and these environment restrictions actually stop it.
 
 ### 3. Secrets and variables
 
-Secrets, by environment (`release-manifest-signing` holds the first two rows, `release-platform-signing` the rest):
+Secrets, by environment (`release-manifest-signing` holds the first row, `release-manifest-cosigning` the second, `release-platform-signing` the rest):
 
 | Name | Purpose |
 |---|---|
 | `UPDATE_SIGNING_KEY` | Contents of the CI update private key file. |
-| `UPDATE_COSIGNING_KEY` | Forks only (`ALLOW_UNOFFICIAL_RELEASE=true`): a second update key held in CI. Must not exist for an official release; the workflow fails if it does. |
+| `UPDATE_COSIGNING_KEY` | Contents of the second update private key file, in `release-manifest-cosigning` only. The workflow fails if it also appears in `release-manifest-signing`. |
 | `MACOS_CERTIFICATE_P12_BASE64` | Developer ID Application certificate, base64 of the `.p12`. |
 | `MACOS_CERTIFICATE_PASSWORD` | Password of the `.p12`. |
 | `MACOS_SIGNING_IDENTITY` | Name of the signing identity. |
@@ -60,16 +62,16 @@ Variables (repository variables, because they are public and unprivileged jobs r
 | Name | Purpose |
 |---|---|
 | `UPDATE_KEY_ID` | `key_id` of the CI update key. |
-| `UPDATE_COSIGN_KEY_ID` | `key_id` of the co-signing key, when CI holds it. |
+| `UPDATE_COSIGN_KEY_ID` | `key_id` of the second update key. |
 | `UPDATE_PUBLIC_KEYS` | Whitespace-separated `<key_id>=<base64 public key>` entries for every update key. Baked into `install.sh` and `install.ps1`, used to check the key in `sign-manifest.sh` and in the smoke jobs. Only `A-Za-z0-9+/=._-` and spaces are accepted, because the value is templated into a shell script. |
 | `UPDATE_MANIFEST_THRESHOLD` | Number of distinct signatures the manifest declares. Official releases need 2 or more. |
 | `INSTALLER_MIN_SIGNATURES` | Minimum signatures the rendered installers demand. Defaults to 2. Below 2 the installer additionally needs `--allow-single-signature`. |
 | `RELEASE_MAX_COMMITS_BEHIND` | How many commits the tagged commit may be behind `main`. Defaults to 0 (the tag must be the tip). |
 | `ALLOW_UNOFFICIAL_RELEASE` | `true` only on forks; see below. |
 
-The signature is made by OpenSSL, piped from the secret straight into `openssl pkeyutl` without touching the disk, by `sign-manifest.sh`. No binary built by the workflow ever sees the update key, which is why there is no signer build step: a compromised dependency compiled in CI cannot read it. The residual risk is the workflow and script at the tagged commit, which is why the environment needs a required reviewer, the tag ruleset limits who can tag, and the maintainer's offline co-signature (made after checking the binary hashes independently) is the second line.
+The signature is made by OpenSSL, piped from the secret straight into `openssl pkeyutl` without touching the disk, by `sign-manifest.sh`. No binary built by the workflow ever sees the update key, which is why there is no signer build step: a compromised dependency compiled in CI cannot read it. The residual risk is the workflow and script at the tagged commit, which is why each environment needs a required reviewer, the tag ruleset limits who can tag, and the second key signs in a separate environment after re-validating the payload against the packaged artifacts.
 
-Preferred end state: move the update key into a KMS or hardware token (cloud KMS with Ed25519 support, or a YubiKey held by a maintainer) and have `sign-manifest.sh` call it, so the key never exists as a repository secret at all. Until then the key is a GitHub environment secret, and an administrator who can edit the environment or the workflow can extract it. This is why the second key stays out of CI: one leaked CI key alone cannot produce a manifest the installers and clients accept.
+Preferred end state: move the update key into a KMS or hardware token (cloud KMS with Ed25519 support, or a YubiKey held by a maintainer) and have `sign-manifest.sh` call it, so the key never exists as a repository secret at all. Until then the key is a GitHub environment secret, and an administrator who can edit the environment or the workflow can extract it. This is why the two keys live in separate environments: one leaked environment secret alone cannot produce a manifest the installers and clients accept.
 
 Windows signing (OV certificate or a cloud signing service) and Apple Developer ID are open decisions for the maintainers; the workflow currently expects the certificate secrets above.
 
@@ -96,11 +98,12 @@ What the installers do and do not guarantee is stated in the header of each scri
 1. On an up-to-date `main` with a clean tree, run `scripts/release.sh minor` (or `patch`, `major`, an exact `X.Y.Z`, or `X.Y.Z-rc.N` for the beta channel). It sets the workspace version in `Cargo.toml`, moves the `CHANGELOG.md` `Unreleased` entries under the new version and date (stable only), runs `cargo test --workspace --locked`, then commits `chore: release vX.Y.Z` and creates the annotated tag locally. It pushes nothing.
 2. Review with `git show vX.Y.Z`. To abandon it: `git tag -d vX.Y.Z && git reset --hard HEAD~1`.
 3. Push both (you do this manually): `git push origin main && git push origin vX.Y.Z`.
-4. Approve the `release-platform-signing` and `release-manifest-signing` environments when asked.
-5. Check the draft release: the assets, the verify-download jobs on all three operating systems (their final threshold step fails until step 6 is done), and the provenance attestation.
-6. Co-sign offline. On a machine you trust, with the hardware key: confirm the binary hashes yourself (rebuild reproducibly, or `gh attestation verify <file> -R <org>/inveil-app`; do not trust the CI run's own report), download `update-manifest*.json.sig`, run `inveil sign --role update --co-sign`, check the result with `inveil verify --role update --min-signatures 2`, and upload it with `gh release upload <tag> --clobber`. The provenance attestation covers the CI-signed file, not the co-signed one.
+4. In the Actions run, approve `release-platform-signing`, `release-manifest-signing` and `release-manifest-cosigning` when asked.
+5. Wait for the verify-download jobs: they install the draft end to end on every OS with both signatures.
+6. Approve `release-publish`. The release is published, `Verify published release` runs against the published assets over https, and if it fails the release is turned back into a draft automatically (the installers and the update feed read `latest/download`).
 7. Fill the release-time numbers in the README (artifact hashes, benchmarks, coverage).
-8. Publish the draft, then run the `Verify published release` workflow with the tag. It downloads the published assets, runs the published `install.sh`/`install.ps1` over https on every OS, and runs `inveil verify` with the full threshold. If it fails, turn the release back into a draft immediately: the installers and the update feed read `latest/download`, so a published bad manifest is live until you do.
+
+To re-check a published release later, run the `Verify published release` workflow by hand with the tag. For a release published with only one signature, add the second by hand: download `update-manifest*.json.sig`, run `inveil sign --role update --co-sign` with the second key, check with `inveil verify --role update --min-signatures 2`, and upload with `gh release upload <tag> --clobber`.
 
 The update feed (`update.feed_url`) is the signed envelope `https://github.com/<org>/inveil-app/releases/latest/download/update-manifest.json.sig`, not an unsigned payload; none is published.
 

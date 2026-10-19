@@ -7,6 +7,7 @@ validate: refuse an unsigned manifest payload that does not match the tag, the r
 check:    compare a signed envelope's payload with the files on disk and report how
           many signatures it carries, so callers can decide whether `inveil verify`
           can already meet the manifest's threshold.
+merge:    combine two envelopes of the same payload, each signed by a different key in its own job, into one.
 """
 import argparse
 import hashlib
@@ -204,6 +205,29 @@ def check(args: argparse.Namespace) -> None:
     print(f"threshold={manifest['threshold']}")
 
 
+SIGNATURES_START = '"signatures": ['
+
+
+def merge(args: argparse.Namespace) -> None:
+    first_text = Path(args.first).read_text()
+    second_text = Path(args.second).read_text()
+    # Both envelopes come from sign-manifest.sh, so everything before the signature list is the same text when the
+    # payload is the same. Keeping that text byte for byte keeps the envelope format install.sh and the client read.
+    prefix = first_text[: first_text.index(SIGNATURES_START) + len(SIGNATURES_START)]
+    if second_text[: second_text.index(SIGNATURES_START) + len(SIGNATURES_START)] != prefix:
+        sys.exit("refusing to merge: the two envelopes sign different payloads")
+    signatures = json.loads(first_text)["signatures"] + json.loads(second_text)["signatures"]
+    key_ids = [signature["key_id"] for signature in signatures]
+    if len(set(key_ids)) != len(key_ids):
+        sys.exit(f"refusing to merge: a key signed twice ({', '.join(key_ids)})")
+    entries = ",".join(
+        f'\n    {{\n      "key_id": "{signature["key_id"]}",\n      "signature": "{signature["signature"]}"\n    }}'
+        for signature in signatures
+    )
+    Path(args.output).write_text(prefix + entries + "\n  ]\n}")
+    print(f"merged signatures from {', '.join(key_ids)}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -233,6 +257,12 @@ def main() -> None:
     chk.add_argument("--version", required=True)
     chk.add_argument("--envelope", required=True)
     chk.set_defaults(handler=check)
+
+    mrg = commands.add_parser("merge")
+    mrg.add_argument("--first", required=True)
+    mrg.add_argument("--second", required=True)
+    mrg.add_argument("--output", required=True)
+    mrg.set_defaults(handler=merge)
 
     args = parser.parse_args()
     args.handler(args)

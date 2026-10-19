@@ -11,7 +11,8 @@
 # artifact URL is https://github.com/$GITHUB_REPOSITORY/releases/download/$EXPECTED_TAG/<name>, every target is
 # present and sha256/size match the packaged binaries in $DIST_DIR. Needs EXPECTED_TAG, GITHUB_REPOSITORY and
 # DIST_DIR. ALLOW_UNOFFICIAL_RELEASE=true (forks) permits a threshold of 1 and more than one key in this job.
-# Official releases sign with one key here; the second signature is added offline by a maintainer.
+# Official releases sign with one key per job: sign-manifest and cosign-manifest each hold one, in separate
+# protected environments, and update_manifest.py merge combines the two envelopes.
 set -eu
 
 payload=${1:?usage: sign-manifest.sh <payload.json> <output.sig> <key_id>:<ENV_VAR>...}
@@ -32,7 +33,7 @@ validate_flags=""
 if [ "${ALLOW_UNOFFICIAL_RELEASE:-}" = true ]; then
   validate_flags="--allow-unofficial"
 elif [ $# -gt 1 ]; then
-  die "official releases sign with one key in CI; the co-signature is added offline by a maintainer (ALLOW_UNOFFICIAL_RELEASE=true for forks)"
+  die "official releases sign with one key per job; the second key signs in cosign-manifest (ALLOW_UNOFFICIAL_RELEASE=true for forks)"
 fi
 
 # The validator never sees the signing keys: they are removed from its environment.

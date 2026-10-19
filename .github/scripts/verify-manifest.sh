@@ -4,7 +4,7 @@
 #
 # Always checks that the signed payload matches the files on disk. Runs `inveil verify`
 # (signatures and threshold) only when the envelope already carries enough signatures;
-# a draft waiting for the maintainer co-signature cannot meet a threshold of 2 yet.
+# a manifest missing its co-signature cannot meet a threshold of 2.
 # Only run this in a job that holds no token or secret: it executes the downloaded binary.
 # When it did verify, it writes "verified=true" to $GITHUB_OUTPUT.
 set -euo pipefail
@@ -26,7 +26,7 @@ if [ -z "${UPDATE_PUBLIC_KEYS:-}" ]; then
 fi
 
 if [ "$signatures" -lt "$threshold" ]; then
-  echo "::notice::manifest has $signatures of $threshold required signatures; signature verification runs after the co-signature is added"
+  echo "::notice::manifest has $signatures of $threshold required signatures; signature verification needs the co-signature from cosign-manifest"
   exit 0
 fi
 

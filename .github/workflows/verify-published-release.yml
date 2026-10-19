@@ -1,13 +1,19 @@
-# Run by hand after the maintainer has added the offline co-signature and published the release.
+# Called by release.yml right after the publish approval, and runnable by hand for any published tag.
 #
 # It trusts nothing from the release run: it downloads the PUBLISHED assets, checks the attestation, runs the
 # published installer exactly as a user would (curl | sh over https, no testing overrides) on every OS, and runs
 # `inveil verify` with the full signature threshold against the published manifest. Treat a release as not shipped
-# until this passes; if it fails, turn the release back into a draft and investigate (docs/RELEASING.md).
+# until this passes. When release.yml calls it, a failure turns the release back into a draft automatically.
 name: Verify published release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, vX.Y.Z or vX.Y.Z-rc.N"
+        required: true
+        type: string
+  workflow_call:
     inputs:
       tag:
         description: "Release tag, vX.Y.Z or vX.Y.Z-rc.N"
@@ -64,7 +70,7 @@ jobs:
         run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir published
 
       - name: Verify build provenance of the binaries and installers
-        # The manifest envelope is excluded: the co-signature replaced the file the build attested.
+        # The manifest envelope is excluded: it can be re-signed (key rotation) without a rebuild.
         run: |
           cd published
           for file in inveil-linux-* inveil-macos-* inveil-windows-* install.sh install.ps1 SHA256SUMS; do
@@ -146,7 +152,7 @@ jobs:
           echo "$report"
           signatures=$(echo "$report" | sed -n 's/^signatures=//p')
           if [ "$signatures" -lt "$REQUIRED_SIGNATURES" ]; then
-            echo "::error::the published manifest has $signatures signature(s), $REQUIRED_SIGNATURES required. The co-signature was not uploaded."
+            echo "::error::the published manifest has $signatures signature(s), $REQUIRED_SIGNATURES required. The cosign-manifest job did not run or failed."
             exit 1
           fi
 

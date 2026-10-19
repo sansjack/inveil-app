@@ -88,4 +88,4 @@ trap - EXIT
 
 printf 'Created commit and tag %s locally. Review with: git show %s\n' "$tag" "$tag"
 printf 'To release, push both: git push origin main && git push origin %s\n' "$tag"
-printf 'Then follow docs/RELEASING.md from step 4 (approve the signing environments, co-sign, publish).\n'
+printf 'Then approve the release environments in GitHub Actions (docs/RELEASING.md, step 4 onwards).\n'

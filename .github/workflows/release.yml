@@ -1,13 +1,15 @@
 # Release pipeline. Push a tag vX.Y.Z (stable) or vX.Y.Z-rc.N (beta channel) from main.
 #
 # Privilege layout: jobs that compile dependencies (build, package, seal) hold no secrets and no write token.
-# Jobs that hold secrets use two separate protected environments, so approving one never exposes the other's
-# secrets: sign-platform (Apple/Windows identities) uses "release-platform-signing" and sign-manifest (the update
-# key) uses "release-manifest-signing". Neither runs a compiler or executes a downloaded binary. The only job with a write token
-# (draft-release) and the one that reads the draft back (fetch-draft) execute nothing from the release.
+# Jobs that hold secrets each use their own protected environment, so approving one never exposes another's
+# secrets: sign-platform (Apple/Windows identities) uses "release-platform-signing", sign-manifest (the first update
+# key) uses "release-manifest-signing" and cosign-manifest (the second update key) uses "release-manifest-cosigning".
+# No job holds both update keys, and none runs a compiler or executes a downloaded binary. The jobs with a write
+# token (draft-release, fetch-draft, publish, unpublish-on-failure) execute nothing from the release. publish waits
+# for approval in the "release-publish" environment after every verify-download job passed, then
+# verify-published-release.yml checks the published assets; if that fails the release is turned back into a draft.
 # Secrets and variables are listed in docs/RELEASING.md. A fork without them still builds, tests and packages when
-# the repository variable ALLOW_UNOFFICIAL_RELEASE=true; official releases fail without two update keys, and CI never holds both of
-# them: the second signature is added offline by a maintainer, then verify-published-release.yml checks the result.
+# the repository variable ALLOW_UNOFFICIAL_RELEASE=true; official releases fail without both update keys.
 name: Release
 
 on:
@@ -446,8 +448,8 @@ jobs:
     # Holds the update signing key and nothing else: no compiler runs here and the only code that touches the key is
     # openssl driven by .github/scripts/sign-manifest.sh, which first validates the payload against the tag and the
     # packaged artifacts it downloads below by exact name. Keep this environment's reviewers reading that script and
-    # this job on every change. Official releases keep only ONE update key in CI; the co-signature is added offline
-    # by a maintainer with a hardware key. UPDATE_COSIGNING_KEY exists for forks only.
+    # this job on every change. This environment holds only the FIRST update key; the second lives in
+    # "release-manifest-cosigning" and signs in cosign-manifest. UPDATE_COSIGNING_KEY here exists for forks only.
     environment: release-manifest-signing
     permissions:
       contents: read
@@ -515,10 +517,10 @@ jobs:
           if [ "$ALLOW_UNOFFICIAL_RELEASE" = true ] && [ -n "$UPDATE_COSIGNING_KEY" ] && [ -n "$UPDATE_COSIGN_KEY_ID" ]; then
             keys="$keys $UPDATE_COSIGN_KEY_ID:UPDATE_COSIGNING_KEY"
           elif [ -n "$UPDATE_COSIGNING_KEY" ]; then
-            echo "::error::UPDATE_COSIGNING_KEY is set in the release-manifest-signing environment. An official release must not hold both update keys in CI; remove it. The co-signature is added offline by a maintainer."
+            echo "::error::UPDATE_COSIGNING_KEY is set in the release-manifest-signing environment. An official release must not hold both update keys in one environment; move it to release-manifest-cosigning."
             exit 1
           else
-            echo "::notice::One update key signed. A maintainer must add the second signature offline with 'inveil sign --role update --co-sign' before publishing."
+            echo "::notice::One update key signed. cosign-manifest adds the second after approval in release-manifest-cosigning."
           fi
           mkdir signature
           # shellcheck disable=SC2086
@@ -532,9 +534,102 @@ jobs:
           path: signature/*
           if-no-files-found: error
 
+  cosign-manifest:
+    name: co-sign update manifest
+    needs: [preflight, seal, sign-manifest]
+    runs-on: ubuntu-latest
+    # Holds the SECOND update key and nothing else, in its own environment with its own reviewers, so neither
+    # approval alone can produce a manifest clients accept. It re-validates the payload against the packaged
+    # artifacts exactly as sign-manifest does, signs it, and merges both signatures into one envelope.
+    environment: release-manifest-cosigning
+    permissions:
+      contents: read
+    env:
+      MANIFEST: ${{ needs.preflight.outputs.manifest }}
+      UPDATE_PUBLIC_KEYS: ${{ vars.UPDATE_PUBLIC_KEYS }}
+      UPDATE_COSIGN_KEY_ID: ${{ vars.UPDATE_COSIGN_KEY_ID }}
+      ALLOW_UNOFFICIAL_RELEASE: ${{ vars.ALLOW_UNOFFICIAL_RELEASE }}
+      EXPECTED_TAG: ${{ needs.preflight.outputs.tag }}
+      DIST_DIR: dist
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: true
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-manifest
+          path: manifest
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: ${{ vars.ALLOW_UNOFFICIAL_RELEASE == 'true' }}
+        with:
+          name: release-assets-signature
+          path: first
+
+      # The packaged binaries, by exact name, so the payload is re-hashed here instead of trusted.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-unknown-linux-gnu
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-unknown-linux-gnu
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-apple-darwin
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-apple-darwin
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-pc-windows-msvc
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-pc-windows-msvc
+          path: dist
+
+      - name: Co-sign the manifest
+        id: cosign
+        env:
+          UPDATE_COSIGNING_KEY: ${{ secrets.UPDATE_COSIGNING_KEY }}
+        run: |
+          mkdir signature
+          if [ -z "$UPDATE_COSIGNING_KEY" ] || [ -z "$UPDATE_COSIGN_KEY_ID" ]; then
+            if [ "$ALLOW_UNOFFICIAL_RELEASE" = true ]; then
+              echo "::warning::UPDATE_COSIGNING_KEY or UPDATE_COSIGN_KEY_ID is not set; passing the first envelope through (ALLOW_UNOFFICIAL_RELEASE=true)"
+              if [ -f "first/$MANIFEST.sig" ]; then
+                cp "first/$MANIFEST.sig" signature/
+                echo "signed=true" >> "$GITHUB_OUTPUT"
+              fi
+              exit 0
+            fi
+            echo "::error::UPDATE_COSIGNING_KEY secret and UPDATE_COSIGN_KEY_ID variable are required in release-manifest-cosigning"
+            exit 1
+          fi
+          mkdir second
+          sh .github/scripts/sign-manifest.sh "manifest/$MANIFEST" "second/$MANIFEST.sig" \
+            "$UPDATE_COSIGN_KEY_ID:UPDATE_COSIGNING_KEY"
+          python3 .github/scripts/update_manifest.py merge \
+            --first "first/$MANIFEST.sig" --second "second/$MANIFEST.sig" --output "signature/$MANIFEST.sig"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.cosign.outputs.signed == 'true'
+        with:
+          name: release-assets-cosigned
+          path: signature/*
+          if-no-files-found: error
+
   attest:
     name: Build provenance
-    needs: [seal, sign-manifest]
+    needs: [seal, cosign-manifest]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -548,7 +643,7 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: ${{ vars.ALLOW_UNOFFICIAL_RELEASE == 'true' }}
         with:
-          name: release-assets-signature
+          name: release-assets-cosigned
           path: dist
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -574,7 +669,7 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: ${{ vars.ALLOW_UNOFFICIAL_RELEASE == 'true' }}
         with:
-          name: release-assets-signature
+          name: release-assets-cosigned
           path: dist
       - name: Create draft
         id: create
@@ -589,11 +684,9 @@ jobs:
           {
             echo "### Draft release $TAG is ready"
             echo
-            echo "1. The verify-download jobs check hashes and run the binary. Their last step fails on purpose until the manifest has its full threshold."
-            echo "2. Add the maintainer co-signature OFFLINE with the hardware key, after verifying the binary hashes independently"
-            echo "   (reproducible build or \`gh attestation verify\`, never by trusting this run): download \`update-manifest*.json.sig\`,"
-            echo "   run \`inveil sign --role update --co-sign\`, and upload it with \`gh release upload --clobber\`."
-            echo "3. Publish the draft, then run the \"Verify published release\" workflow with this tag. If it fails, turn the release back into a draft at once."
+            echo "1. The verify-download jobs check hashes, verify both signatures and install end to end on every OS."
+            echo "2. When they pass, approve the \`release-publish\` environment to publish."
+            echo "3. Verify published release then runs against the published assets; if it fails the release goes back to draft."
           } >> "$GITHUB_STEP_SUMMARY"
 
   fetch-draft:
@@ -712,15 +805,57 @@ jobs:
           esac
 
       # The install test above only runs once the manifest meets its full threshold, because the installer enforces
-      # it. A draft that still awaits the maintainer co-signature therefore cannot pass here; fail loudly instead of
-      # skipping, so a green run always means "installed end to end with the full threshold". After co-signing, run
-      # verify-published-release.yml. Forks that opted out with ALLOW_UNOFFICIAL_RELEASE=true only get a warning.
-      - name: Require the full signature threshold (fails on a draft awaiting the co-signature)
+      # it. Fail loudly instead of skipping, so a green run always means "installed end to end with the full
+      # threshold" and publish never runs on less. Forks with ALLOW_UNOFFICIAL_RELEASE=true only get a warning.
+      - name: Require the full signature threshold
         if: ${{ !cancelled() && steps.verify.outputs.verified != 'true' }}
         run: |
           if [ "$ALLOW_UNOFFICIAL_RELEASE" = true ]; then
             echo "::warning::the install test did not run: the manifest does not meet its signature threshold (ALLOW_UNOFFICIAL_RELEASE=true)"
             exit 0
           fi
-          echo "::error::The install test did NOT run because the manifest does not yet carry its full signature threshold. This is expected for a fresh draft: add the offline co-signature, upload it, then run the verify-published-release workflow. Do not publish before that passes."
+          echo "::error::The install test did NOT run because the manifest does not carry its full signature threshold. Check the cosign-manifest job; the release stays a draft."
           exit 1
+
+  publish:
+    name: Publish release
+    needs: [preflight, draft-release, verify-download]
+    runs-on: ubuntu-latest
+    # Waits for approval in "release-publish", and only after every verify-download job installed the draft end to
+    # end with the full signature threshold. Executes nothing from the release.
+    environment: release-publish
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.preflight.outputs.tag }}
+    steps:
+      - name: Publish the draft
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+
+  verify-published:
+    name: Verify published release
+    needs: [preflight, publish]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify-published-release.yml
+    with:
+      tag: ${{ needs.preflight.outputs.tag }}
+
+  unpublish-on-failure:
+    name: Back to draft (published release failed verification)
+    needs: [preflight, publish, verify-published]
+    if: ${{ failure() && needs.publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    # The installers and the update feed read latest/download, so a published release that fails verification is
+    # live until it is a draft again.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.preflight.outputs.tag }}
+    steps:
+      - name: Turn the release back into a draft
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=true
+          echo "::error::$TAG failed verification after publishing and is a draft again. See the Verify published release jobs."

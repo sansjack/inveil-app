@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Releases are co-signed and published from CI: the second update key signs in its own `release-manifest-cosigning` environment (`cosign-manifest`), `publish` waits for approval in `release-publish` after every install test passed, and `Verify published release` runs automatically, turning the release back into a draft if it fails. No offline co-signing step. See docs/RELEASING.md and THREAT_MODEL.md R3.
+
 ## [0.2.0] - 2026-10-19
 
 ### Fixed
