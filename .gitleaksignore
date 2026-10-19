@@ -1,0 +1,9 @@
+# gitleaks false positives, reviewed 2026-10-19. One finding fingerprint per line.
+# install.ps1 / install.sh SELFTEST_KEY: RFC 8032 test vector 2 public key, used to prove openssl verifies Ed25519.
+2a305f4db53d1115b0f79c7289b115c2a0265b6f:scripts/install.ps1:generic-api-key:127
+2a305f4db53d1115b0f79c7289b115c2a0265b6f:scripts/install.sh:generic-api-key:76
+# install.test.sh / install.test.ps1: dummy test token "tok_ABC-123_secret".
+2a305f4db53d1115b0f79c7289b115c2a0265b6f:scripts/install.test.sh:generic-api-key:360
+2a305f4db53d1115b0f79c7289b115c2a0265b6f:scripts/install.test.ps1:generic-api-key:250
+# install.sh: `backend_keys=""` followed by `skip_enroll=0`, an empty variable, not a key.
+2a305f4db53d1115b0f79c7289b115c2a0265b6f:scripts/install.sh:generic-api-key:600
