@@ -72,8 +72,8 @@ See [ENROLLMENT.md](ENROLLMENT.md) for the client-side flow and the bundle forma
 
 - Events carry metadata only (provider, model, token counts, latency, status, blocked, findings count). They never carry prompt content.
 - Take the organisation and user from the credential, never from the body.
-- `client` carries `version`, `policy_version`, `config_hash`, optional `failure_modes` and `fail_open_count`. Store them per device. Flag devices whose `config_hash` differs from the policy you published, or that go silent while `usage_reporting` is `required`. This is detection, not prevention; see [THREAT_MODEL.md](THREAT_MODEL.md).
-- An empty `events` list is a heartbeat.
+- `client` carries `version`, `policy_version`, `config_hash`, optional `failure_modes` and `fail_open_count`. Store them per device. Flag devices whose `config_hash` differs from the policy you published, or that go silent while `usage_reporting` is `required` or `optional` (enrolled and managed clients heartbeat under both). This is detection, not prevention; see [THREAT_MODEL.md](THREAT_MODEL.md).
+- An empty `events` list is a heartbeat. Enrolled and managed clients send one every `heartbeat_seconds` (default 300) unless `usage_reporting` is `disabled`, so the backend can see which devices are alive and which policy version they run.
 - Deduplicate on event `id`; clients retry after failures.
 - Return any 2xx on success. `400` for malformed batches, `413` above 100 events.
 

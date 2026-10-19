@@ -60,8 +60,9 @@ paths:
       description: |
         Metadata only, never prompt content. At most 100 events per batch. Whether the client sends usage is decided
         by `settings.usage_reporting` in the signed snapshot (`required`, `optional`, `disabled`) and by local
-        configuration where the snapshot allows it. With `required`, a batch with an empty `events` list is sent as
-        a heartbeat every `settings.heartbeat_seconds`. A backend that never receives usage can omit this endpoint.
+        configuration where the snapshot allows it. A client owned by the backend (managed, or enrolled) sends events and
+        heartbeats under `required`, heartbeats only under `optional` and nothing under `disabled`. A heartbeat is a
+        batch with an empty `events` list, sent every `settings.heartbeat_seconds` (default 300). A backend that never receives usage can omit this endpoint.
       security:
         - bearer: []
       requestBody:

@@ -48,7 +48,7 @@ What leaves the machine:
 |---|---|---|
 | In | Signed rules snapshot | Polled from your backend, or read from a local file |
 | In | Update manifest | Only if `update.mode` is not `off` |
-| Out | Usage metadata and heartbeats, never content | Only if `usage.sink` is `http`, or the signed settings require it |
+| Out | Usage metadata and heartbeats, never content | Only if `usage.sink` is `http`, or the signed settings require it. Enrolled and managed clients send heartbeats unless the signed settings disable usage |
 | Out | The original or redacted request | To the AI provider, as before |
 
 ### Failure behaviour
@@ -95,6 +95,7 @@ To keep the proxy running in the background and point local tools at it, run `in
 ```sh
 inveil doctor            # Covered, Needs setup or Not covered per tool; exits 1 if any is Not covered
 inveil doctor --json
+inveil refetch           # fetch your organisation's latest rules now (restarts the background service)
 sudo inveil install --managed # only Claude Code's machine-wide managed settings (needs admin rights); then run `inveil install` as your own user
 inveil discover claude.ai --record   # developers: record hosts, paths and content types, never bodies
 ```
@@ -120,15 +121,16 @@ A backend is any server that implements contract v1:
 
 Start with [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md): a working backend in five minutes with `inveil keygen`, `inveil sign` and a static file server, no code. The full reference is [docs/CONTRACT.md](docs/CONTRACT.md) and [contract/v1/openapi.yaml](contract/v1/openapi.yaml). Organisation onboarding is in [docs/ENROLLMENT.md](docs/ENROLLMENT.md).
 
-## Standalone, managed, offline
+## Solo, Team, MDM, offline
 
-| Mode | Who decides | Backend needed |
+| Shape | Who decides | Backend needed |
 |---|---|---|
-| `standalone` (default) | You. All settings, including usage reporting, are local. | No |
-| `managed` | An administrator, through signed settings. Usage reporting can be required, optional or disabled. | Yes, or a signed file |
-| `offline = true` | Nothing is fetched or sent. Rules come from `rules_file` or the built-in set. In managed mode this is ignored unless the signed settings allow it. | No |
+| Solo (`standalone`, the default, no `backend.url`) | You. All settings, including usage reporting, are local. | No |
+| Team (enrolled through an invite) | The organisation, through signed settings. Local `dry_run = true` and `open` failure modes are ignored, with a warning at startup. The trust anchors (`backend.url`, pinned and root keys) stay local. Usage reporting follows the signed `usage_reporting`: with `optional` the client still sends heartbeats, with `disabled` nothing. | Yes |
+| MDM (`mode = "managed"` in the system-wide file) | An administrator, through signed settings and a configuration standard users cannot edit. A local `open` failure mode is refused at startup. Usage reporting can be required, optional or disabled. | Yes, or a signed file |
+| `offline = true` | Nothing is fetched or sent. Rules come from `rules_file` or the built-in set. For Team and MDM clients this is ignored unless the signed settings allow it. | No |
 
-A local administrator can always replace the binary or stop the service. Managed mode raises the bar and gives the backend a way to detect drift (heartbeats carry the policy version and a configuration hash); it does not prevent tampering. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+A local administrator can always replace the binary or stop the service. Team and MDM raise the bar and give the backend a way to detect drift (heartbeats carry the policy version and a configuration hash); it does not prevent tampering. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
 ## Configuration
 
@@ -159,8 +161,8 @@ Layering, highest first: flags, `INVEIL_*` environment variables, `inveil.toml` 
 | `limits.max_decoded_bytes` | `67108864` (64 MiB) | none |
 | `upstream` | `https://api.anthropic.com` | `allowed_upstreams` |
 | `dry_run` | `false` | `dry_run` |
-| `block_unscannable` | unset (alias for `failure_modes.unscannable`: `true` closed, `false` open in standalone mode) | `failure_modes.unscannable` |
-| `failure_modes.*` | unset (`open` or `closed` in standalone mode, only `closed` in managed mode) | `failure_modes` |
+| `block_unscannable` | unset (alias for `failure_modes.unscannable`: `true` closed, `false` open for Solo) | `failure_modes.unscannable` |
+| `failure_modes.*` | unset (`open` or `closed` for Solo, only `closed` for Team and MDM) | `failure_modes` |
 | `deny` | `[]` | `deny` (union) |
 | `max_tokens` | `0` (no limit) | `max_tokens` (lowest non-zero) |
 | `browser_fail_closed` | unset (alias for `failure_modes.service_down`: `true` closed, `false` open) | `failure_modes.service_down` |
@@ -178,7 +180,7 @@ Layering, highest first: flags, `INVEIL_*` environment variables, `inveil.toml` 
 | `update.pinned_keys` | `[]` | none |
 | `data_dir` | unset (per-user directory) | none |
 
-The signed `block_unscannable`, `browser_fail_closed` and `fail_closed_on_expiry` flags are legacy: they still work when `failure_modes` is silent about the condition. Local configuration can only make an enforced setting stricter, never looser (in standalone mode a failure mode is the exception: the owner may open it locally unless the signed policy sets it).
+The signed `block_unscannable`, `browser_fail_closed` and `fail_closed_on_expiry` flags are legacy: they still work when `failure_modes` is silent about the condition. Local configuration can only make an enforced setting stricter, never looser (a failure mode is the exception for Solo: the owner may open it locally unless the signed policy sets it; a Team device ignores a local `open` with a startup warning, and MDM refuses it at startup).
 
 ## Security
 

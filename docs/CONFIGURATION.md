@@ -34,6 +34,12 @@ The per-user file is `inveil.toml` in the per-user data directory (`~/Library/Ap
 
 `max_tokens` (merged with the signed limit by taking the smaller non-zero value), `logging.level`, `logging.file`, `logging.debug` and `logging.trace` (debug still needs the signed `allow_debug`). The lock list is one table in [`crates/inveil/src/config/load.rs`](../crates/inveil/src/config/load.rs), and a test fails if a configuration key is in neither list, so a new key cannot be left unlocked by accident.
 
+### Enrolled devices
+
+A client enrolled through an organisation email invite (`auth.mode = "enrolled"`) with a `backend.url` is a Team device: it follows the organisation's signed settings like a managed one, except that it starts on the built-in rules before its first fetch, even though `mode` is not `managed`. Local `dry_run = true` and local `open` failure modes (including the legacy `block_unscannable = false` and `browser_fail_closed = false`) are ignored, with a warning at startup naming each key; they are not refused, so existing installs keep starting. Local `offline = true` is ignored unless the signed settings set `allow_offline` (no warning is logged). The trust anchors (`backend.url`, `backend.pinned_keys`, `backend.root_keys`) stay local.
+
+The difference from MDM (`mode = "managed"` in the system-wide file) is where the file lives. A Team device has no system-wide file (a `mode = "managed"` in the per-user file or environment does not turn it into an MDM device), so the per-user configuration still applies to the keys the signed settings do not govern, and a local `open` is ignored rather than refused. An MDM device refuses a local `open` at startup and locks the keys listed above.
+
 ## Local only and server-enforced
 
 The trust root (backend URL and pinned keys) can only come from local configuration, never from the backend. Other policy settings can also arrive in the signed snapshot's `settings`. The client merges the two and never lets local configuration loosen anything: `dry_run = false` from the server forces enforcement, `deny` lists are unioned, `max_tokens` takes the lowest non-zero value, and `allowed_upstreams` must contain the local `upstream`. Failure modes are the one setting the signed policy may loosen (see [Failure modes](#failure-modes)); local configuration can only tighten them.
@@ -47,14 +53,14 @@ Types and defaults match [`crates/inveil/src/config.rs`](../crates/inveil/src/co
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `mode` | `standalone` or `managed` | `standalone` | Who owns policy. |
-| `offline` | bool | `false` | No network at all. In managed mode honoured only if signed `allow_offline` is true. |
+| `offline` | bool | `false` | No network at all. On a managed or enrolled client honoured only if signed `allow_offline` is true. |
 | `rules_file` | path | unset | Local signed snapshot used instead of a backend. |
 | `upstream` | string | `https://api.anthropic.com` | Default upstream of the API proxy. Server: `allowed_upstreams`. |
 | `dry_run` | bool | `false` | Log findings, forward unchanged. Server: `dry_run`. |
-| `block_unscannable` | bool | unset | Alias for `failure_modes.unscannable`: `true` is `closed`, `false` is `open` (standalone only). Unset: unscannable requests are blocked unless the signed policy says `open`. |
+| `block_unscannable` | bool | unset | Alias for `failure_modes.unscannable`: `true` is `closed`, `false` is `open` (Solo only; ignored on an enrolled client, refused in managed mode). Unset: unscannable requests are blocked unless the signed policy says `open`. |
 | `deny` | array of regex | `[]` | Extra blocked patterns. Server: `deny` (union). |
 | `max_tokens` | integer | `0` | 0 is no limit. Server: `max_tokens` (lowest non-zero). |
-| `browser_fail_closed` | bool | unset | Alias for `failure_modes.service_down`: `true` is `closed`, `false` is `open` (standalone only). |
+| `browser_fail_closed` | bool | unset | Alias for `failure_modes.service_down`: `true` is `closed`, `false` is `open` (Solo only; ignored on an enrolled client, refused in managed mode). |
 | `notify` | bool | `true` | Desktop notifications. Local only. |
 | `data_dir` | path | per-user directory | State, CA, cache and logs. Local only. |
 | `state_keychain` | bool | `true` | Anchor the anti-rollback state (snapshot high-water mark, revoked key ids, newest update seen) in the OS keychain, which also holds the key that authenticates every record, so a deleted, restored or forged file in `data_dir` is refused. Turn off only where no keychain exists. Locked in managed mode. Local only. |
@@ -71,7 +77,7 @@ Each key takes `"open"` or `"closed"`. Unset keys follow the resolution order in
 | `policy_expired` | `open` or `closed` | unset | Requests after the snapshot expired with no fresh one. |
 | `service_down` | `open` or `closed` | unset | The browser PAC fallback while inveil is down. |
 
-In `managed` mode `"open"` is refused at startup; only the signed policy can choose it. In `standalone` mode `"open"` is yours to choose, unless the signed policy sets the same condition.
+In `managed` mode `"open"` is refused at startup; only the signed policy can choose it. An enrolled client ignores a local `"open"` with a warning instead. In a Solo setup `"open"` is yours to choose, unless the signed policy sets the same condition.
 
 ### `[backend]`
 
@@ -106,7 +112,7 @@ In `managed` mode `"open"` is refused at startup; only the signed policy can cho
 
 | Key | Default | Notes |
 |---|---|---|
-| `port` | `8787` | Localhost API proxy. It also serves `/proxy.pac` (the PAC file browsers fetch) and `GET /health` (`{"version": "..."}`, loopback `Host` only). |
+| `port` | `8787` | Localhost API proxy. It also serves `/proxy.pac` (the PAC file browsers fetch) and `GET /health` (`{"version": "...", "policy_version": N}`, loopback `Host` only). |
 | `browser_port` | `8788` | Localhost browser proxy. The PAC points browsers here; the PAC itself is served on `port`. |
 
 Both listeners bind `127.0.0.1` only.
@@ -124,7 +130,7 @@ Both must be at least 1. Local only.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `sink` | `http`, `file`, `none` | `none` | Server: `usage_reporting` (`required` forces reporting, `disabled` forbids it, `optional` leaves it local) and `heartbeat_seconds`. |
+| `sink` | `http`, `file`, `none` | `none` | Server: `usage_reporting` (`required` forces reporting, `disabled` forbids it, `optional` leaves it local) and `heartbeat_seconds`. A managed or enrolled (`auth.mode = "enrolled"`) client with a `backend.url` reports to the backend under that setting whatever the local sink says: `required` sends events and heartbeats, `optional` sends heartbeats only (and events too if the local sink is `http`; on an enrolled device `file` or `none` send heartbeats only), `disabled` sends nothing. `heartbeat_seconds` defaults to 300. A Solo client sends only what its sink says. |
 | `path` | string | `/v1/usage` | Backend path for `http`. |
 | `file` | path | unset | Target for `file`. |
 
@@ -163,7 +169,7 @@ When inveil cannot make a normal decision, each condition resolves to `open` (le
 | `policy_expired` | The snapshot passed `expires_at` and no fresh one could be fetched | At request time, by the client |
 | `service_down` | inveil is not running | When routing is written: the browser PAC served at `/proxy.pac` ends with `; DIRECT` for `open` and does not for `closed`. The API base-URL route is naturally closed (the connection is refused) |
 
-A condition resolves, in order, to: (1) `closed` if local configuration says `closed` (for the condition or in `failure_modes.default`), which can always tighten; (2) the signed `failure_modes` entry for the condition, then the signed `failure_modes.default`, `open` or `closed`; (3) `closed` if a legacy signed flag asks for it (`block_unscannable`, `fail_closed_on_expiry`, `browser_fail_closed`); (4) `open` from local configuration, but only in `standalone` mode and only for a condition the signed policy left alone (a specific local entry beats the local `default`); (5) the built-in mode, `closed` for the three request-time conditions and `open` for `service_down`. In `managed` mode a local `open` is refused at startup, because only the signed policy may loosen a mode. In `standalone` mode, where one person is both administrator and user, local `open` is the owner's choice, but it never overrides a value the signed policy sets. The signed `failure_modes` entries take precedence over the legacy flags. The legacy local keys `block_unscannable` and `browser_fail_closed` are aliases for `failure_modes.unscannable` and `failure_modes.service_down`: `true` is `closed`, `false` is `open` (standalone only, and the `[failure_modes]` table wins over `false`). The resolved modes are part of `effective_config_hash`, are logged at startup and are reported in the usage `client` block.
+A condition resolves, in order, to: (1) `closed` if local configuration says `closed` (for the condition or in `failure_modes.default`), which can always tighten; (2) the signed `failure_modes` entry for the condition, then the signed `failure_modes.default`, `open` or `closed`; (3) `closed` if a legacy signed flag asks for it (`block_unscannable`, `fail_closed_on_expiry`, `browser_fail_closed`); (4) `open` from local configuration, but only for a Solo setup (no enrolled device credential, not `managed`) and only for a condition the signed policy left alone (a specific local entry beats the local `default`); (5) the built-in mode, `closed` for the three request-time conditions and `open` for `service_down`. When the system-wide file declares `managed`, a local `open` is refused at startup, because only the signed policy may loosen a mode. On an enrolled (Team) client a local `open` is ignored with a warning at startup, and the client keeps starting. In `standalone` mode without enrollment (Solo), where one person is both administrator and user, local `open` is the owner's choice, but it never overrides a value the signed policy sets. The signed `failure_modes` entries take precedence over the legacy flags. The legacy local keys `block_unscannable` and `browser_fail_closed` are aliases for `failure_modes.unscannable` and `failure_modes.service_down`: `true` is `closed`, `false` is `open` (Solo only: ignored with a warning on an enrolled client, refused in managed mode; the `[failure_modes]` table wins over `false`). The resolved modes are part of `effective_config_hash`, are logged at startup and are reported in the usage `client` block.
 
 Every request passed because a mode is `open` writes an audit line with `"action":"fail_open"` and the `condition`, and is counted in `fail_open_count` of the next usage batch or heartbeat (a running total since the client started). A body that could not be buffered at all (read error or over `limits.max_body_bytes`) is always blocked, because there is nothing left to forward. The built-in rules never expire, so `policy_expired` only applies to signed snapshots.
 

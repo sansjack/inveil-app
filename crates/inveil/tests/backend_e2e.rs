@@ -9,7 +9,6 @@ use std::time::Duration;
 const USAGE_WAIT: Duration = Duration::from_secs(15);
 const QUIET_PERIOD: Duration = Duration::from_millis(1500);
 const REFUSED_EXIT_CODE: i32 = 3;
-const USAGE_EXIT_CODE: i32 = 2;
 // The harness blocks its thread while the binary starts, so the fixture servers need a worker of their own.
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -300,6 +299,53 @@ async fn managed_required_reporting_cannot_be_disabled_or_dodged_with_offline() 
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_managed_client_with_optional_reporting_sends_heartbeats_without_events() {
+    let key = SigningKey::generate();
+    let optional = snapshot(1, |snapshot| {
+        snapshot.settings.usage_reporting = Some(contract::UsageReporting::Optional);
+        snapshot.settings.heartbeat_seconds = Some(1);
+    });
+    let (backend, _, setup) = backend_serving(&key, &optional).await;
+    let setup = setup
+        .top_level("mode = \"managed\"")
+        .table("[usage]\nsink = \"none\"");
+    let directory = tempfile::tempdir().unwrap();
+    let proxy = RunningProxy::start(directory.path(), &setup);
+
+    let first = backend.wait_for_usage(USAGE_WAIT).await;
+    assert!(!first.is_empty(), "a heartbeat must arrive");
+    proxy.post_chat(&chat(SSN_TEXT)).await;
+    tokio::time::sleep(QUIET_PERIOD * 2).await;
+    let batches = backend.state.usage_batches.lock().unwrap().clone();
+    assert!(
+        batches.iter().all(|batch| batch.events.is_empty()),
+        "events stay local when the local sink is none"
+    );
+    drop(proxy);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_managed_client_stays_silent_when_the_server_disables_reporting() {
+    let key = SigningKey::generate();
+    let disabled = snapshot(1, |snapshot| {
+        snapshot.settings.usage_reporting = Some(contract::UsageReporting::Disabled);
+        snapshot.settings.heartbeat_seconds = Some(1);
+    });
+    let (backend, _, setup) = backend_serving(&key, &disabled).await;
+    let setup = setup
+        .top_level("mode = \"managed\"")
+        .table("[usage]\nsink = \"none\"");
+    let directory = tempfile::tempdir().unwrap();
+    let proxy = RunningProxy::start(directory.path(), &setup);
+
+    tokio::time::sleep(QUIET_PERIOD).await;
+    proxy.post_chat(&chat("hello")).await;
+    tokio::time::sleep(QUIET_PERIOD).await;
+    assert!(backend.state.usage_batches.lock().unwrap().is_empty());
+    drop(proxy);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn standalone_usage_events_reach_the_backend_without_prompt_content() {
     let key = SigningKey::generate();
     let (backend, _, setup) = backend_serving(&key, &snapshot(1, |_| {})).await;
@@ -416,16 +462,4 @@ async fn a_signed_closed_mode_beats_a_standalone_local_open() {
     let directory = tempfile::tempdir().unwrap();
     let proxy = RunningProxy::start(directory.path(), &setup);
     assert_eq!(proxy.post_unreadable_chat().await.status(), 400);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn managed_mode_refuses_a_local_open_failure_mode() {
-    let upstream = Upstream::start().await;
-    let setup = Setup::new(&upstream)
-        .top_level("mode = \"managed\"")
-        .table("[failure_modes]\nunscannable = \"open\"");
-    let directory = tempfile::tempdir().unwrap();
-    let (status, log) = RunningProxy::start_expecting_exit(directory.path(), &setup);
-    assert_eq!(status.code(), Some(USAGE_EXIT_CODE), "{log}");
-    assert!(log.contains("failure_modes"), "{log}");
 }

@@ -3,13 +3,14 @@
 # Unknown keys are rejected at startup, so a typo fails loudly.
 # See docs/CONFIGURATION.md for which settings the backend can enforce.
 
-# "standalone": you are both administrator and user; every setting is local.
-# "managed": an administrator owns the policy. The signed rules decide usage reporting and the settings the
+# "standalone": you are both administrator and user; every setting is local (Solo). A device enrolled through an
+# invite (Team) still follows the organisation's signed settings and ignores a local dry_run = true and "open".
+# "managed" (MDM): an administrator owns the policy. The signed rules decide usage reporting and the settings the
 # backend enforces. Put this file in the system-wide location so standard users cannot edit it.
 mode = "standalone"
 
-# No network at all: no backend, no usage, no update checks. In managed mode this is honoured only when the
-# signed settings set allow_offline.
+# No network at all: no backend, no usage, no update checks. On a managed or enrolled client this is honoured only
+# when the signed settings set allow_offline.
 offline = false
 
 # A locally supplied signed rules file, used instead of the backend (air-gapped and standalone setups).
@@ -19,10 +20,10 @@ offline = false
 upstream = "https://api.anthropic.com"
 
 # Log what would be blocked or redacted, but forward the request unchanged. A backend that sets dry_run = false
-# overrides this.
+# overrides this, and an enrolled client ignores dry_run = true.
 dry_run = false
 
-# Legacy alias for [failure_modes] unscannable: true is "closed", false is "open" (standalone mode only).
+# Legacy alias for [failure_modes] unscannable: true is "closed", false is "open" (Solo only; ignored on an enrolled client).
 # Unset: requests the proxy cannot scan are blocked unless the signed policy says "open".
 # block_unscannable = true
 
@@ -107,7 +108,8 @@ max_decoded_bytes = 67108864
 # "none": nothing is sent or written.
 # "file": append metadata-only JSON lines to `file`.
 # "http": POST batches to the backend at `path`.
-# In managed mode the signed settings.usage_reporting can require or forbid reporting.
+# On a managed or enrolled client the signed settings.usage_reporting decides: required, optional (heartbeats only)
+# or disabled.
 sink = "none"
 path = "/v1/usage"
 # file = "/path/to/usage.jsonl"

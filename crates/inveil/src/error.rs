@@ -5,6 +5,7 @@ use crate::platform::PlatformError;
 use crate::policy::PolicyBuildError;
 use crate::proxy::browser_ca::CaError;
 use crate::proxy::ProxyError;
+use crate::update::health::HealthError;
 use crate::update::UpdateError;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -29,6 +30,8 @@ pub enum AppError {
     Ca(#[from] CaError),
     #[error(transparent)]
     Update(#[from] UpdateError),
+    #[error(transparent)]
+    Health(#[from] HealthError),
     #[error("cannot read {path}: {source}")]
     ReadFile {
         path: PathBuf,

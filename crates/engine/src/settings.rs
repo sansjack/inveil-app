@@ -46,6 +46,10 @@ pub enum UsagePolicy {
     On {
         heartbeat_seconds: Option<u64>,
     },
+    /// Events are dropped, but a heartbeat with no events is sent at this interval so the backend sees the client.
+    HeartbeatOnly {
+        heartbeat_seconds: u64,
+    },
 }
 
 /// What each failure condition resolves to once the local and signed settings are merged.
@@ -171,15 +175,18 @@ fn usage_policy(local: &LocalSettings, server: &Settings, offline: bool) -> Usag
     if offline {
         return UsagePolicy::Off;
     }
+    let heartbeat_seconds = server
+        .heartbeat_seconds
+        .unwrap_or(DEFAULT_HEARTBEAT_SECONDS);
     match server_usage_mode(server) {
         "disabled" => UsagePolicy::Off,
         "required" => UsagePolicy::On {
-            heartbeat_seconds: Some(
-                server
-                    .heartbeat_seconds
-                    .unwrap_or(DEFAULT_HEARTBEAT_SECONDS),
-            ),
+            heartbeat_seconds: Some(heartbeat_seconds),
         },
+        _ if local.managed && local.usage_enabled => UsagePolicy::On {
+            heartbeat_seconds: Some(heartbeat_seconds),
+        },
+        _ if local.managed => UsagePolicy::HeartbeatOnly { heartbeat_seconds },
         _ if local.usage_enabled => UsagePolicy::On {
             heartbeat_seconds: None,
         },
@@ -622,16 +629,40 @@ mod tests {
         );
     }
 
+    fn usage_for(managed: bool, usage_enabled: bool, mode: Option<&str>) -> UsagePolicy {
+        let local = LocalSettings {
+            managed,
+            usage_enabled,
+            ..local()
+        };
+        let server = server_with(json!({"usage_reporting": mode, "heartbeat_seconds": 90}));
+        merged(&local, &server).usage
+    }
+
+    #[test]
+    fn a_backend_owned_client_heartbeats_under_optional_and_goes_silent_only_when_disabled() {
+        let heartbeat_seconds = 90;
+        let managed = |usage_enabled, mode| usage_for(true, usage_enabled, mode);
+        assert_eq!(
+            managed(false, Some("optional")),
+            UsagePolicy::HeartbeatOnly { heartbeat_seconds }
+        );
+        assert_eq!(
+            managed(true, Some("optional")),
+            UsagePolicy::On {
+                heartbeat_seconds: Some(heartbeat_seconds)
+            }
+        );
+        assert_eq!(managed(false, Some("disabled")), UsagePolicy::Off);
+        assert_eq!(
+            managed(false, None),
+            UsagePolicy::HeartbeatOnly { heartbeat_seconds }
+        );
+    }
+
     #[test]
     fn usage_reporting_follows_the_server_when_it_decides() {
-        let usage = |local_wants: bool, mode: Option<&str>| {
-            let local = LocalSettings {
-                usage_enabled: local_wants,
-                ..local()
-            };
-            let server = server_with(json!({"usage_reporting": mode, "heartbeat_seconds": 90}));
-            merged(&local, &server).usage
-        };
+        let usage = |local_wants: bool, mode: Option<&str>| usage_for(false, local_wants, mode);
         let heartbeat = UsagePolicy::On {
             heartbeat_seconds: Some(90),
         };

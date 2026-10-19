@@ -107,6 +107,10 @@ pub fn spawn_uploader<S: UsageSink + 'static>(
                     continue;
                 }
                 UsagePolicy::On { heartbeat_seconds } => heartbeat_seconds,
+                UsagePolicy::HeartbeatOnly { heartbeat_seconds } => {
+                    batch.clear();
+                    Some(heartbeat_seconds)
+                }
             };
             let heartbeat_due = heartbeat_seconds
                 .is_some_and(|seconds| last_sent.elapsed() >= Duration::from_secs(seconds));

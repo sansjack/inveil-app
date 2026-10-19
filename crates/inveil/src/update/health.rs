@@ -32,8 +32,11 @@ pub trait HealthCheck {
 }
 
 #[derive(Deserialize)]
-struct HealthReport {
-    version: String,
+pub struct HealthReport {
+    pub version: String,
+    /// Absent when the running proxy predates this field.
+    #[serde(default)]
+    pub policy_version: u64,
 }
 
 /// Restarts through the platform service manager and asks the local proxy which version it is.
@@ -44,14 +47,27 @@ pub struct ServiceHealth {
 }
 
 impl ServiceHealth {
-    fn probe(&self) -> Option<String> {
+    fn probe(&self) -> Option<HealthReport> {
         let client = reqwest::blocking::Client::builder()
             .timeout(PROBE_TIMEOUT)
             .build()
             .ok()?;
         let url = format!("http://127.0.0.1:{}/health", self.port);
-        let report: HealthReport = client.get(url).send().ok()?.json().ok()?;
-        Some(report.version)
+        client.get(url).send().ok()?.json().ok()
+    }
+
+    /// Waits until the local proxy answers `/health` and returns what it said.
+    pub fn wait_for_report(&self) -> Result<HealthReport, HealthError> {
+        let deadline = Instant::now() + self.timeout;
+        loop {
+            if let Some(report) = self.probe() {
+                return Ok(report);
+            }
+            if Instant::now() >= deadline {
+                return Err(HealthError::NotListening(self.timeout));
+            }
+            thread::sleep(POLL_INTERVAL);
+        }
     }
 }
 
@@ -90,21 +106,13 @@ impl HealthCheck for ServiceHealth {
         if !self.service_managed {
             return Ok(());
         }
-        let deadline = Instant::now() + self.timeout;
-        loop {
-            if let Some(reported) = self.probe() {
-                if reported == expected.to_string() {
-                    return Ok(());
-                }
-                return Err(HealthError::WrongVersion {
-                    expected: expected.clone(),
-                    reported,
-                });
-            }
-            if Instant::now() >= deadline {
-                return Err(HealthError::NotListening(self.timeout));
-            }
-            thread::sleep(POLL_INTERVAL);
+        let reported = self.wait_for_report()?.version;
+        if reported == expected.to_string() {
+            return Ok(());
         }
+        Err(HealthError::WrongVersion {
+            expected: expected.clone(),
+            reported,
+        })
     }
 }

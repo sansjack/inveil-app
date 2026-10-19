@@ -9,7 +9,7 @@ mod args;
 mod download;
 mod fetch;
 mod files;
-mod health;
+pub(crate) mod health;
 mod layout;
 mod manifest;
 mod pending;

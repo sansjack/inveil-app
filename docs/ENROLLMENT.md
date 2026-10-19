@@ -17,6 +17,8 @@ Embedding an organisation key in the binary after signing breaks Authenticode an
 5. The client stores the credential and the `org_id` in the OS keychain and discards the token. From then on it rejects any rules snapshot whose `audience` is not that `org_id`, so a snapshot (or a delegated signing key) made for another organisation cannot be replayed here. A backend that omits `org_id` gets no audience binding.
 6. Every later `GET /v1/rules` and `POST /v1/usage` carries the credential as a bearer token. The backend attributes usage from the credential, so there is no organisation field in a request that the client could forge.
 
+An enrolled device is a Team device: it follows the organisation's signed `settings` (see [Enrolled devices](CONFIGURATION.md#enrolled-devices)), and it sends a heartbeat to `POST /v1/usage` unless `usage_reporting` is `disabled`. To fetch new rules right away, run `inveil refetch`.
+
 Revoking a device credential stops its rules and usage immediately.
 
 ## Token properties
@@ -60,7 +62,7 @@ A hardware identifier is optional and off by default. If you collect one, check 
 
 ### Managed mode
 
-In managed mode the `[update]` table must come from the system-wide file (see [CONFIGURATION.md](CONFIGURATION.md)), which locks `update`. The bundle is written to the per-user `inveil.toml`, whose `[update]` table a managed client ignores, so a managed fleet has to put `feed_url`, `pinned_keys` and `min_signatures = 2` in the system-wide file through MDM. Relying on the install script's bundle alone gives that protection to standalone installs only.
+In managed mode the `[update]` table must come from the system-wide file (see [CONFIGURATION.md](CONFIGURATION.md)), which locks `update`. The bundle is written to the per-user `inveil.toml`, whose `[update]` table a managed client ignores, so a managed fleet has to put `feed_url`, `pinned_keys` and `min_signatures = 2` in the system-wide file through MDM. Relying on the install script's bundle alone puts the update keys in the per-user file, which Solo and Team installs read; only MDM locks them in the system-wide file.
 
 Run `inveil enroll --bundle enrollment.json`, or `inveil enroll --bundle -` to read the bundle from standard input, which is how the install scripts pass it so the token never touches disk or a command line. The installer option `--bundle <file>` / `-Bundle <file>` is different by design: it passes your file to `inveil enroll` as it is, so the one-time token stays on disk wherever you put it. Delete the file after enrolling (the installer reminds you), and prefer `INVEIL_ENROLL_TOKEN` when you can. The configuration is written to the per-user `inveil.toml` (or the file given by `--config`) only after the backend accepted the token. The device credential and the organisation id returned by the backend go to the OS keychain. A self-hoster can write the bundle by hand.
 

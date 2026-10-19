@@ -124,7 +124,8 @@ pub fn load(sources: &Sources) -> Result<Config, ConfigError> {
         set_path(&mut table, flag.key, flag.value.clone());
     }
 
-    if system.as_ref().is_some_and(declares_managed) {
+    let system_managed = system.as_ref().is_some_and(declares_managed);
+    if system_managed {
         let mut locked = defaults;
         merge(&mut locked, system.unwrap_or_default());
         for key in MANAGED_LOCKED_KEYS {
@@ -135,7 +136,8 @@ pub fn load(sources: &Sources) -> Result<Config, ConfigError> {
         }
     }
 
-    let config: Config = Value::Table(table).try_into()?;
+    let mut config: Config = Value::Table(table).try_into()?;
+    config.system_managed = system_managed;
     config.validate()?;
     Ok(config)
 }
@@ -347,6 +349,54 @@ mod tests {
             config.max_tokens, 500,
             "keys that are not locked stay user-controlled"
         );
+    }
+
+    const BACKEND_TOML: &str = "[backend]\nurl = \"https://inveil.example.com\"\npinned_keys = [{ key_id = \"k1\", public_key = \"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=\" }]\n";
+
+    #[test]
+    fn a_managed_system_file_keeps_its_own_dry_run_and_refuses_a_local_open_failure_mode() {
+        let directory = tempfile::tempdir().unwrap();
+        let system_text = format!("mode = \"managed\"\ndry_run = true\n{BACKEND_TOML}");
+        let system = write(directory.path(), "system.toml", &system_text);
+        let config = load(&Sources {
+            system_file: Some(system.clone()),
+            ..Sources::default()
+        })
+        .unwrap();
+        assert!(config.system_managed);
+        assert!(config.local_settings().dry_run);
+        assert!(config.ignored_overrides().is_empty());
+
+        let refusing = format!("{system_text}[failure_modes]\ndefault = \"open\"\n");
+        let system = write(directory.path(), "refusing.toml", &refusing);
+        let error = load(&Sources {
+            system_file: Some(system),
+            ..Sources::default()
+        })
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ConfigError::Invalid {
+                key: "failure_modes",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn a_user_file_declaring_managed_does_not_make_the_device_system_managed() {
+        let directory = tempfile::tempdir().unwrap();
+        let user_text = format!(
+            "mode = \"managed\"\ndry_run = true\n[auth]\nmode = \"enrolled\"\n{BACKEND_TOML}"
+        );
+        let user = write(directory.path(), "user.toml", &user_text);
+        let config = load(&Sources {
+            user_file: Some(user),
+            ..Sources::default()
+        })
+        .unwrap();
+        assert!(!config.system_managed);
+        assert!(!config.local_settings().dry_run);
     }
 
     #[test]

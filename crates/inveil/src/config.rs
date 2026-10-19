@@ -20,7 +20,8 @@ const SECONDS_PER_MINUTE: u64 = 60;
 pub struct Config {
     pub mode: Mode,
     /// No network at all: no backend, no usage, no update checks. Rules come from `rules_file` or the built-in set.
-    /// In `managed` mode this is honoured only when the signed settings set `allow_offline`.
+    /// On a `managed` or enrolled client (see `owned_by_backend`) this is honoured only when the signed settings
+    /// set `allow_offline`.
     pub offline: bool,
     /// A locally supplied signed snapshot, used instead of the backend (air-gapped and `standalone` setups).
     pub rules_file: Option<PathBuf>,
@@ -49,6 +50,10 @@ pub struct Config {
     /// Anchor the anti-rollback state (high-water marks, revoked key ids) in the OS keychain, so restoring or deleting
     /// files in the data directory is detected. Turn off only where no keychain exists, such as test sandboxes.
     pub state_keychain: bool,
+    /// Set by `config::load` when the system-wide file declares `mode = "managed"`. Only that file is
+    /// administrator-controlled, so a `mode = "managed"` from the user file or environment does not count.
+    #[serde(skip)]
+    pub system_managed: bool,
 }
 
 /// Who owns the policy.
@@ -241,6 +246,7 @@ impl Default for Config {
             limits: LimitsConfig::default(),
             data_dir: None,
             state_keychain: true,
+            system_managed: false,
         }
     }
 }
@@ -354,7 +360,7 @@ impl Config {
             local_modes.service_down,
         ]
         .contains(&Some(FailMode::Open));
-        if loosens && self.mode == Mode::Managed {
+        if loosens && self.system_managed {
             return Err(invalid(
                 "failure_modes",
                 "in managed mode local configuration can only choose \"closed\"; \"open\" must come from the signed policy",
@@ -451,24 +457,89 @@ impl Config {
         }
     }
 
-    pub fn local_settings(&self) -> LocalSettings {
+    /// The failure modes with the legacy `block_unscannable` and `browser_fail_closed` switches applied.
+    fn local_failure_modes(&self) -> FailureModes {
         let mut failure_modes = self.failure_modes.clone();
         failure_modes.unscannable = alias_mode(self.block_unscannable, failure_modes.unscannable);
         failure_modes.service_down =
             alias_mode(self.browser_fail_closed, failure_modes.service_down);
+        failure_modes
+    }
+
+    /// An enrolled client takes its behaviour from the organisation's signed settings, so local `dry_run` and
+    /// `open` failure modes do not apply to it. A client whose system-wide file declares `managed` is already
+    /// locked down by that file, so its local values are honoured or refused at load instead.
+    fn ignores_local_overrides(&self) -> bool {
+        self.owned_by_backend() && !self.system_managed
+    }
+
+    /// Whether usage events (not just heartbeats) may be sent. An enrolled device opts in only with the `http`
+    /// sink, since `start_usage` sends to the backend whatever the sink; a system-managed or solo client opts in
+    /// with any sink but `none`.
+    fn usage_enabled(&self) -> bool {
+        if self.ignores_local_overrides() {
+            return self.usage.sink == UsageSink::Http;
+        }
+        self.usage.sink != UsageSink::None
+    }
+
+    pub fn local_settings(&self) -> LocalSettings {
         LocalSettings {
-            managed: self.mode == Mode::Managed,
+            managed: self.owned_by_backend(),
             offline: self.offline,
-            dry_run: self.dry_run,
-            failure_modes,
+            dry_run: self.dry_run && !self.ignores_local_overrides(),
+            failure_modes: self.local_failure_modes(),
             max_tokens: self.max_tokens,
             deny: self.deny.clone(),
             upstream: self.upstream.clone(),
-            usage_enabled: self.usage.sink != UsageSink::None,
+            usage_enabled: self.usage_enabled(),
             debug: self.logging.debug,
             poll_seconds: self.backend.poll_minutes * SECONDS_PER_MINUTE,
             client_version: env!("CARGO_PKG_VERSION").to_string(),
         }
+    }
+
+    /// Whether the organisation's signed settings govern this client: a managed client, or one enrolled through an
+    /// organisation invite, belongs to that organisation's administrator.
+    pub fn owned_by_backend(&self) -> bool {
+        self.backend.url.is_some()
+            && (self.mode == Mode::Managed || self.auth.mode == AuthMode::Enrolled)
+    }
+
+    /// The dotted keys of local values that are ignored because this device is enrolled, so the organisation's
+    /// signed settings apply instead. Empty for a solo or system-managed client.
+    pub fn ignored_overrides(&self) -> Vec<&'static str> {
+        if !self.ignores_local_overrides() {
+            return Vec::new();
+        }
+        let modes = self.local_failure_modes();
+        let candidates = [
+            (self.dry_run, "dry_run"),
+            (
+                modes.default == Some(FailMode::Open),
+                "failure_modes.default",
+            ),
+            (
+                modes.unscannable == Some(FailMode::Open),
+                "failure_modes.unscannable",
+            ),
+            (
+                modes.scan_error == Some(FailMode::Open),
+                "failure_modes.scan_error",
+            ),
+            (
+                modes.policy_expired == Some(FailMode::Open),
+                "failure_modes.policy_expired",
+            ),
+            (
+                modes.service_down == Some(FailMode::Open),
+                "failure_modes.service_down",
+            ),
+        ];
+        candidates
+            .into_iter()
+            .filter_map(|(ignored, key)| ignored.then_some(key))
+            .collect()
     }
 
     /// The keys that may sign rules snapshots, decoded.
@@ -559,6 +630,97 @@ mod tests {
             pinned_keys: keys,
             ..UpdateConfig::default()
         }
+    }
+
+    #[test]
+    fn an_enrolled_or_managed_client_with_a_backend_follows_the_backend_usage_setting() {
+        let mut enrolled = with_backend("https://inveil.example.com");
+        enrolled.auth.mode = AuthMode::Enrolled;
+        assert!(enrolled.owned_by_backend());
+
+        let mut managed = with_backend("https://inveil.example.com");
+        managed.mode = Mode::Managed;
+        assert!(managed.owned_by_backend());
+
+        assert!(!with_backend("https://inveil.example.com").owned_by_backend());
+
+        let mut enrolled_without_backend = Config::default();
+        enrolled_without_backend.auth.mode = AuthMode::Enrolled;
+        assert!(!enrolled_without_backend.owned_by_backend());
+    }
+
+    #[test]
+    fn an_enrolled_client_ignores_local_dry_run_and_open_failure_modes() {
+        let mut config = with_backend("https://inveil.example.com");
+        config.auth.mode = AuthMode::Enrolled;
+        config.dry_run = true;
+        config.failure_modes.default = Some(FailMode::Open);
+        let local = config.local_settings();
+        assert!(local.managed);
+        assert!(!local.dry_run);
+        assert_eq!(
+            config.ignored_overrides(),
+            vec!["dry_run", "failure_modes.default"]
+        );
+        assert!(
+            config.validate().is_ok(),
+            "an enrolled install must still start"
+        );
+    }
+
+    #[test]
+    fn an_enrolled_client_reports_an_aliased_open_failure_mode_by_its_condition() {
+        let mut config = with_backend("https://inveil.example.com");
+        config.auth.mode = AuthMode::Enrolled;
+        config.block_unscannable = Some(false);
+        assert_eq!(
+            config.ignored_overrides(),
+            vec!["failure_modes.unscannable"]
+        );
+    }
+
+    #[test]
+    fn a_system_managed_client_keeps_its_dry_run_and_reports_nothing_ignored() {
+        let mut config = with_backend("https://inveil.example.com");
+        config.mode = Mode::Managed;
+        config.system_managed = true;
+        config.dry_run = true;
+        assert!(config.local_settings().dry_run);
+        assert!(config.ignored_overrides().is_empty());
+    }
+
+    #[test]
+    fn a_user_set_managed_mode_does_not_restore_dry_run_on_an_enrolled_client() {
+        let mut config = with_backend("https://inveil.example.com");
+        config.auth.mode = AuthMode::Enrolled;
+        config.mode = Mode::Managed;
+        config.dry_run = true;
+        config.failure_modes.default = Some(FailMode::Open);
+        assert!(!config.local_settings().dry_run);
+        assert!(config.ignored_overrides().contains(&"dry_run"));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn an_enrolled_client_sends_usage_events_only_with_the_http_sink() {
+        let mut config = with_backend("https://inveil.example.com");
+        config.auth.mode = AuthMode::Enrolled;
+        config.usage.sink = UsageSink::File;
+        assert!(!config.local_settings().usage_enabled);
+        config.usage.sink = UsageSink::Http;
+        assert!(config.local_settings().usage_enabled);
+    }
+
+    #[test]
+    fn a_solo_client_keeps_every_local_choice() {
+        let mut config = Config {
+            dry_run: true,
+            ..Config::default()
+        };
+        config.failure_modes.default = Some(FailMode::Open);
+        let local = config.local_settings();
+        assert!(!local.managed && local.dry_run);
+        assert!(config.ignored_overrides().is_empty());
     }
 
     #[test]
@@ -670,6 +832,7 @@ mod tests {
         config.failure_modes.default = Some(FailMode::Open);
         assert!(config.validate().is_ok());
         config.mode = Mode::Managed;
+        config.system_managed = true;
         assert!(matches!(
             config.validate(),
             Err(ConfigError::Invalid {

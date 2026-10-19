@@ -7,6 +7,7 @@ mod discover;
 mod doctor;
 mod init;
 mod install;
+mod refetch;
 mod tool;
 mod tool_settings;
 
@@ -30,6 +31,7 @@ Commands:
                       (--managed also writes Claude Code's machine-wide managed settings; needs admin rights)
   uninstall           Remove the service, browser protection and the Claude Code setting
   status              Say whether the proxy is running
+  refetch             Fetch your organisation's latest rules now
   doctor [--json]     Say, per enabled tool, whether it is covered (exit 1 if one is not)
   discover T --record Record the hosts, paths and content types a tool sends (developers; off without --record)
   login | logout | whoami
@@ -56,6 +58,7 @@ pub enum Command {
     Install { managed: bool },
     Uninstall,
     Status,
+    Refetch,
     Doctor { json: bool },
     Discover { target: String, record: bool },
     Login,
@@ -237,6 +240,7 @@ impl Cli {
             }),
             "uninstall" => Ok(Command::Uninstall),
             "status" => Ok(Command::Status),
+            "refetch" => Ok(Command::Refetch),
             "login" => Ok(Command::Login),
             "logout" => Ok(Command::Logout),
             "whoami" => Ok(Command::Whoami),
@@ -287,6 +291,7 @@ pub async fn dispatch(cli: Cli, config: Config) -> Result<ExitCode, AppError> {
         Command::Install { managed } => install::install(config, managed).await?,
         Command::Uninstall => install::uninstall(config)?,
         Command::Status => install::status(&config)?,
+        Command::Refetch => refetch::refetch(&config).await?,
         Command::Doctor { json } => return doctor::run(&config, json),
         Command::Discover { target, record } => discover::run(config, &target, record).await?,
         Command::Login => auth::login(&config).await?,
@@ -333,6 +338,12 @@ mod tests {
         let path = default_user_config().unwrap();
         assert!(path.is_absolute(), "{}", path.display());
         assert!(path.ends_with(crate::brand::CONFIG_FILE_NAME));
+    }
+
+    #[test]
+    fn refetch_takes_no_arguments() {
+        assert_eq!(parse("refetch").unwrap().command, Command::Refetch);
+        assert!(matches!(parse("refetch --bogus"), Err(AppError::Usage(_))));
     }
 
     #[test]
@@ -425,6 +436,7 @@ mod tests {
             "install --help",
             "uninstall -h",
             "status --help",
+            "refetch --help",
             "doctor --help",
             "discover --help",
             "login --help",

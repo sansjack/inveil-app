@@ -82,7 +82,7 @@ async fn handle(State(context): State<ApiContext>, request: Request<Body>) -> Re
     }
     let active = state.policy();
     if parts.method == Method::GET && parts.uri.path() == HEALTH_PATH {
-        return health();
+        return health(&active);
     }
     if parts.method == Method::GET && parts.uri.path() == PAC_PATH {
         return pac(state, &active);
@@ -205,8 +205,9 @@ fn host_of(upstream: &str) -> String {
         .to_string()
 }
 
-fn health() -> Response {
-    axum::Json(json!({"version": env!("CARGO_PKG_VERSION")})).into_response()
+fn health(active: &ActivePolicy) -> Response {
+    axum::Json(json!({"version": env!("CARGO_PKG_VERSION"), "policy_version": active.version}))
+        .into_response()
 }
 
 /// Removes the headers that belong to this hop only: the fixed list plus any header the `Connection` header names.
@@ -495,7 +496,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn health_reports_only_the_version_to_a_loopback_host_and_never_reaches_the_upstream() {
+    async fn health_reports_only_the_versions_to_a_loopback_host_and_never_reaches_the_upstream() {
         let rig = rig().await;
         let response = rig
             .http
@@ -506,7 +507,10 @@ mod tests {
         assert_eq!(response.status(), 200);
         assert_eq!(
             response.json::<Value>().await.unwrap(),
-            json!({"version": env!("CARGO_PKG_VERSION")})
+            json!({
+                "version": env!("CARGO_PKG_VERSION"),
+                "policy_version": rig.proxy.state.policy().version,
+            })
         );
         let foreign = rig
             .http

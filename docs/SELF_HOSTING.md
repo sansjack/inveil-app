@@ -118,13 +118,14 @@ To use a local file without any server, set `offline = true` and `rules_file = "
 
 ### Usage
 
-`POST /v1/usage` receives metadata-only batches. Skip it by leaving `usage.sink = "none"` (standalone) or by setting `settings.usage_reporting = "disabled"` (managed). To collect metrics without a server, use `usage.sink = "file"` and ship the JSON lines yourself. The batch format is in [CONTRACT.md](CONTRACT.md).
+`POST /v1/usage` receives metadata-only batches. Skip it by leaving `usage.sink = "none"` (Solo) or by setting `settings.usage_reporting = "disabled"` (Team and MDM; otherwise an enrolled client still heartbeats). To collect metrics without a server, use `usage.sink = "file"` and ship the JSON lines yourself. The batch format is in [CONTRACT.md](CONTRACT.md).
 
 ### Enrollment
 
 If you want a credential per device (so you can revoke one laptop and attribute usage), implement `POST /v1/enroll` and set `auth.mode = "enrolled"`. If one shared secret is enough, skip enrollment and use `auth.mode = "static_token"` with the token in the environment variable named by `auth.token_env`. See [ENROLLMENT.md](ENROLLMENT.md).
 
-## Standalone or managed
+## Solo, Team or MDM
 
-- Standalone (default): you are administrator and user. Every setting is local and nothing needs to be enforced by the signed file.
-- Managed: an administrator owns policy. Add a `settings` object to the payload (for example `"dry_run": false`, `"usage_reporting": "required"`, `"allowed_upstreams": ["https://api.anthropic.com"]`), set `mode = "managed"`, and install the configuration in the system-wide location so standard users cannot edit it: `/Library/Application Support/inveil` on macOS, `/etc/inveil` on Linux, `%ProgramData%\inveil` on Windows. Local settings can only tighten what the signed file sets. This deters accidents and casual bypass; it does not stop a local administrator (see [THREAT_MODEL.md](THREAT_MODEL.md)).
+- Solo (default): you are administrator and user. Every setting is local and nothing needs to be enforced by the signed file.
+- Team: devices enrolled through an invite (`auth.mode = "enrolled"`) follow the `settings` in the signed file; their local `dry_run = true` and `open` failure modes are ignored. No system-wide file is needed.
+- MDM: an administrator owns policy. Add a `settings` object to the payload (for example `"dry_run": false`, `"usage_reporting": "required"`, `"allowed_upstreams": ["https://api.anthropic.com"]`), set `mode = "managed"`, and install the configuration in the system-wide location so standard users cannot edit it: `/Library/Application Support/inveil` on macOS, `/etc/inveil` on Linux, `%ProgramData%\inveil` on Windows. Local settings can only tighten what the signed file sets. This deters accidents and casual bypass; it does not stop a local administrator (see [THREAT_MODEL.md](THREAT_MODEL.md)).

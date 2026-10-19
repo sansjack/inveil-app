@@ -94,7 +94,7 @@ Local configuration can only make these stricter, never looser. A snapshot witho
 
 | Field | Meaning |
 |---|---|
-| `dry_run` | `false` forces enforcement. Null leaves the choice local. |
+| `dry_run` | `false` forces enforcement. Null leaves the choice local, except that an enrolled or managed client ignores a local `dry_run = true`. |
 | `block_unscannable` | Legacy. `true` is the same as `failure_modes.unscannable = "closed"` when `failure_modes` says nothing about it. |
 | `max_tokens` | Maximum estimated tokens per request. 0 or null: no server limit. Lowest non-zero value wins. |
 | `deny` | Extra regexes to block. Unioned with local. |
@@ -103,8 +103,8 @@ Local configuration can only make these stricter, never looser. A snapshot witho
 | `min_poll_seconds` | Floor for the polling interval. |
 | `min_client_version` | Oldest client version allowed. |
 | `allow_debug` | Whether local debug and trace logging may be enabled. |
-| `usage_reporting` | `required`, `optional` or `disabled`. Null means `optional`. |
-| `heartbeat_seconds` | With `required`, send a heartbeat at this interval even with no events. |
+| `usage_reporting` | `required`, `optional` or `disabled`. Null means `optional`. A client owned by the backend (managed, or enrolled) sends events and heartbeats under `required`, heartbeats only under `optional` (plus events if its local sink is on; on an enrolled device only `http` counts), and nothing under `disabled`. A Solo client has no heartbeat. |
+| `heartbeat_seconds` | Interval of the heartbeat of a backend-owned client, even with no events. Default 300. |
 | `allow_offline` | Whether local configuration may run the client fully offline. |
 | `fail_closed_on_expiry` | Legacy. `true` is the same as `failure_modes.policy_expired = "closed"` when `failure_modes` says nothing about it. Default false. |
 | `failure_modes` | What to do per failure condition, see below. |
@@ -121,7 +121,7 @@ Each value is `"open"` (pass the traffic and record it) or `"closed"` (block it)
 | `policy_expired` | The snapshot expired and no fresh one is available. |
 | `service_down` | The local service is down. Applied when routing is written (the browser PAC falls back to `DIRECT` for `open`), not at runtime. |
 
-In managed mode local configuration can only choose `closed` and a local `open` is ignored; a standalone owner may choose either locally, and a signed value for the same condition wins over a local `open`. Without a signed or local value the client uses `closed` for the first three and `open` for `service_down`. A signed `failure_modes` value (including `default`) beats the legacy flags above. The resolved modes are part of the effective configuration hash.
+In managed mode local configuration can only choose `closed` and a local `open` is ignored (an enrolled client ignores it too); a Solo owner may choose either locally, and a signed value for the same condition wins over a local `open`. Without a signed or local value the client uses `closed` for the first three and `open` for `service_down`. A signed `failure_modes` value (including `default`) beats the legacy flags above. The resolved modes are part of the effective configuration hash.
 
 ## Usage batch
 
@@ -140,7 +140,7 @@ In managed mode local configuration can only choose `closed` and a local `open` 
 }
 ```
 
-At most 100 events. No content is ever included. Delivery is at least once, so deduplicate on `events[].id`. The `client` block lets the backend notice a device running a different policy version or a different effective configuration than the one it published. `failure_modes` (optional) lists the resolved mode of every condition, and `fail_open_count` is the number of requests passed through because a mode was `open` since the client started (both additive: older clients omit them, so treat them as absent or 0). The details of each pass-through are in the client's local audit log, not in the batch. With `usage_reporting = required`, a batch with an empty `events` list is a heartbeat.
+At most 100 events. No content is ever included. Delivery is at least once, so deduplicate on `events[].id`. The `client` block lets the backend notice a device running a different policy version or a different effective configuration than the one it published. `failure_modes` (optional) lists the resolved mode of every condition, and `fail_open_count` is the number of requests passed through because a mode was `open` since the client started (both additive: older clients omit them, so treat them as absent or 0). The details of each pass-through are in the client's local audit log, not in the batch. A batch with an empty `events` list is a heartbeat. A backend-owned client sends them unless `usage_reporting` is `disabled`.
 
 ## Enrollment
 

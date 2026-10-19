@@ -2,7 +2,7 @@
 use crate::backend::{
     spawn_uploader, FilePolicySource, FileUsageSink, HttpUsageSink, PolicyUpdater, UsageReporter,
 };
-use crate::config::{Config, Mode, UpdateMode, UsageSink};
+use crate::config::{Config, UpdateMode, UsageSink};
 use crate::error::AppError;
 use crate::logging;
 use crate::platform;
@@ -127,6 +127,11 @@ fn describe_start(config: &Config, policy: &ActivePolicy) {
     if policy.effective.offline {
         tracing::info!("offline: no network calls will be made");
     }
+    for key in config.ignored_overrides() {
+        tracing::warn!(
+            "{key} is set locally but ignored: this device is enrolled, so your organisation's settings apply"
+        );
+    }
     if policy.effective.dry_run {
         tracing::info!("dry run: findings are logged, nothing is blocked");
     }
@@ -147,8 +152,8 @@ fn describe_start(config: &Config, policy: &ActivePolicy) {
     );
 }
 
-/// Managed mode sends usage to the backend whatever the local sink says, because the administrator's signed
-/// `usage_reporting` setting decides whether and how often; the live policy is consulted on every flush.
+/// A managed or enrolled client sends usage to the backend whatever the local sink says, because the administrator's
+/// signed `usage_reporting` setting decides whether and how often; the live policy is consulted on every flush.
 fn start_usage(
     config: &Config,
     offline: bool,
@@ -158,8 +163,7 @@ fn start_usage(
     if offline {
         return Ok(UsageReporter::disabled());
     }
-    let managed_with_backend = config.mode == Mode::Managed && config.backend.url.is_some();
-    if config.usage.sink == UsageSink::Http || managed_with_backend {
+    if config.usage.sink == UsageSink::Http || config.owned_by_backend() {
         let Some(credentials) = credentials else {
             return Ok(UsageReporter::disabled());
         };
