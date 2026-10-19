@@ -1,0 +1,33 @@
+{
+  "note": "DRIFT: /backend-api/codex/ moved: the codex signal no longer matches and only the host-wide chat signal (chatgpt-web) is left",
+  "covers": [],
+  "request": {
+    "host": "chatgpt.com",
+    "path": "/backend-api/v2/responses",
+    "headers": {
+      "authorization": "Bearer FAKE.JWT.TOKEN"
+    },
+    "body": {
+      "model": "gpt-5-codex",
+      "input": "hi"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":30,\"output_tokens\":6}}}\n\n"
+  },
+  "expect": {
+    "billing": "subscription",
+    "billing_signal": "chatgpt-web",
+    "model": "gpt-5-codex",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 30,
+    "output_tokens": 6,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

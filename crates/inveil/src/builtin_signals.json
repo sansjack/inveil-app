@@ -1,0 +1,272 @@
+{
+  "schema": 1,
+  "signals": [
+    {
+      "id": "codex-chatgpt-login",
+      "host": "chatgpt.com",
+      "path_prefix": "/backend-api/codex/",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "Codex only sends to this URL when signed in with a ChatGPT account; API-key Codex uses api.openai.com.",
+      "verified": true,
+      "evidence_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/model-provider-info/src/lib.rs",
+      "evidence_contains": "https://chatgpt.com/backend-api/codex"
+    },
+    {
+      "id": "gemini-code-assist-login",
+      "host": "cloudcode-pa.googleapis.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "Gemini CLI signed in with a Google account talks to the Code Assist server; an API key would use generativelanguage.googleapis.com.",
+      "verified": true,
+      "evidence_url": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/packages/core/src/code_assist/server.ts",
+      "evidence_contains": "https://cloudcode-pa.googleapis.com"
+    },
+    {
+      "id": "copilot-individual",
+      "host": "individual.githubcopilot.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "GitHub Copilot is a seat subscription, and the plan is in the host name.",
+      "verified": true,
+      "evidence_url": "https://docs.github.com/en/copilot/reference/copilot-allowlist-reference",
+      "evidence_contains": "individual.githubcopilot.com"
+    },
+    {
+      "id": "copilot-business",
+      "host": "business.githubcopilot.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "GitHub Copilot is a seat subscription, and the plan is in the host name.",
+      "verified": true,
+      "evidence_url": "https://docs.github.com/en/copilot/reference/copilot-allowlist-reference",
+      "evidence_contains": "business.githubcopilot.com"
+    },
+    {
+      "id": "copilot-enterprise",
+      "host": "enterprise.githubcopilot.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "GitHub Copilot is a seat subscription, and the plan is in the host name.",
+      "verified": true,
+      "evidence_url": "https://docs.github.com/en/copilot/reference/copilot-allowlist-reference",
+      "evidence_contains": "enterprise.githubcopilot.com"
+    },
+    {
+      "id": "azure-openai-host",
+      "host": "openai.azure.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "api",
+      "reason": "Azure OpenAI is billed per token, whether the request carries an api-key header or an Entra bearer token.",
+      "verified": true
+    },
+    {
+      "id": "vertex-regional-host",
+      "host": "*-aiplatform.googleapis.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "api",
+      "reason": "Vertex AI is billed per token to the Google Cloud project.",
+      "verified": true
+    },
+    {
+      "id": "vertex-global-host",
+      "host": "aiplatform.googleapis.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "api",
+      "reason": "Vertex AI is billed per token to the Google Cloud project.",
+      "verified": true
+    },
+    {
+      "id": "vertex-rep-host",
+      "host": "aiplatform.*.rep.googleapis.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "api",
+      "reason": "Vertex AI is billed per token to the Google Cloud project.",
+      "verified": true
+    },
+    {
+      "id": "bedrock-runtime-host",
+      "host": "bedrock-runtime.*.amazonaws.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "api",
+      "reason": "Amazon Bedrock is billed per token to the AWS account.",
+      "verified": true
+    },
+    {
+      "id": "openrouter-key",
+      "host": "openrouter.ai",
+      "sets": "billing",
+      "when": {"request_header": "authorization"},
+      "value": "api",
+      "reason": "OpenRouter requests carry a bearer API key and are billed per token.",
+      "verified": true
+    },
+    {
+      "id": "gemini-api-key",
+      "host": "generativelanguage.googleapis.com",
+      "sets": "billing",
+      "when": {"request_header": "x-goog-api-key"},
+      "value": "api",
+      "reason": "The Gemini API key is sent in x-goog-api-key.",
+      "verified": true,
+      "evidence_url": "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/packages/core/src/core/contentGenerator.ts",
+      "evidence_contains": "x-goog-api-key"
+    },
+    {
+      "id": "anthropic-api-key",
+      "host": "api.anthropic.com",
+      "sets": "billing",
+      "when": {"request_header": "x-api-key"},
+      "value": "api",
+      "reason": "Anthropic API keys are sent in x-api-key.",
+      "verified": false
+    },
+    {
+      "id": "anthropic-oauth",
+      "host": "api.anthropic.com",
+      "sets": "billing",
+      "when": {"request_header": "authorization", "prefix": "sk-ant-oat"},
+      "value": "subscription",
+      "reason": "Claude Code signed in with a plan sends an OAuth access token as a bearer; the prefix is compared after \"Bearer \".",
+      "verified": false
+    },
+    {
+      "id": "openai-api-key",
+      "host": "api.openai.com",
+      "sets": "billing",
+      "when": {"request_header": "authorization", "prefix": "sk-"},
+      "value": "api",
+      "reason": "OpenAI API keys are sent as a bearer and start with sk-.",
+      "verified": false
+    },
+    {
+      "id": "claude-web",
+      "host": "claude.ai",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "The Claude chat app is a plan or its free tier.",
+      "verified": false
+    },
+    {
+      "id": "chatgpt-web",
+      "host": "chatgpt.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "The ChatGPT app is a plan or its free tier.",
+      "verified": false
+    },
+    {
+      "id": "gemini-web",
+      "host": "gemini.google.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "The Gemini chat app is a plan or its free tier.",
+      "verified": false
+    },
+    {
+      "id": "grok-web",
+      "host": "grok.com",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "The Grok chat app is a plan or its free tier.",
+      "verified": false
+    },
+    {
+      "id": "cursor",
+      "host": "cursor.sh",
+      "sets": "billing",
+      "when": {"always": true},
+      "value": "subscription",
+      "reason": "Cursor is treated as a plan, but it can also run on the user's own API key through the same host, so this is not proven.",
+      "verified": false
+    },
+    {
+      "id": "gemini-api-model",
+      "host": "generativelanguage.googleapis.com",
+      "sets": "model",
+      "from": {"path_regex": "^/v1(?:beta|alpha)?/models/([^/:]+)"},
+      "reason": "The Gemini API puts the model in the URL path.",
+      "verified": true
+    },
+    {
+      "id": "vertex-model",
+      "host": "googleapis.com",
+      "sets": "model",
+      "from": {"path_regex": "/publishers/[^/]+/models/([^/:]+)"},
+      "reason": "Vertex AI puts the model in the URL path after publishers/{publisher}/models/.",
+      "verified": true
+    },
+    {
+      "id": "bedrock-model",
+      "host": "bedrock-runtime.*.amazonaws.com",
+      "sets": "model",
+      "from": {"path_regex": "^/model/([a-z0-9]+\\.[a-zA-Z0-9._:%-]+)/"},
+      "reason": "Bedrock puts the model or inference profile id in the URL; ARNs do not match, so account ids stay out of events.",
+      "verified": true
+    },
+    {
+      "id": "gemini-code-assist-model",
+      "host": "cloudcode-pa.googleapis.com",
+      "sets": "model",
+      "from": {"request_body": "/model"},
+      "reason": "The Code Assist request body names the model.",
+      "verified": true
+    },
+    {
+      "id": "openrouter-model",
+      "host": "openrouter.ai",
+      "sets": "model",
+      "from": {"response_body": "/model"},
+      "reason": "OpenRouter reports the model that answered as author/name.",
+      "verified": true
+    },
+    {
+      "id": "azure-openai-served-by",
+      "host": "openai.azure.com",
+      "sets": "served_by",
+      "value": "azure",
+      "reason": "Azure OpenAI deployments are named by the customer, so the host is the only reliable provider signal.",
+      "verified": true
+    },
+    {
+      "id": "bedrock-author",
+      "host": "bedrock-runtime.*.amazonaws.com",
+      "sets": "served_by",
+      "from": {"path_regex": "^/model/(?:(?:us|eu|apac|global|us-gov|jp|au)\\.)?([a-z0-9-]+)\\."},
+      "reason": "The Bedrock model id starts with the model author, optionally after a region prefix.",
+      "verified": true
+    },
+    {
+      "id": "vertex-publisher",
+      "host": "googleapis.com",
+      "sets": "served_by",
+      "from": {"path_regex": "/publishers/([^/]+)/models/"},
+      "reason": "The Vertex AI URL path names the model publisher.",
+      "verified": true
+    },
+    {
+      "id": "litellm-upstream",
+      "host": "*",
+      "sets": "served_by",
+      "from": {"response_header": "x-litellm-model-api-base", "host_only": true},
+      "reason": "LiteLLM reports the upstream base URL it called; only its host is kept.",
+      "verified": true,
+      "evidence_url": "https://docs.litellm.ai/docs/proxy/response_headers",
+      "evidence_contains": "x-litellm-model-api-base"
+    }
+  ]
+}

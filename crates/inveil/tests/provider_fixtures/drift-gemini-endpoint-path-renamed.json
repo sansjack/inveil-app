@@ -1,0 +1,65 @@
+{
+  "note": "DRIFT: /models/ became /m/: no model is read from the path, billing still comes from the key header, and tokens still come from the body",
+  "covers": [],
+  "request": {
+    "host": "generativelanguage.googleapis.com",
+    "path": "/v1beta/m/gemini-3.5-flash-lite:generateContent",
+    "headers": {
+      "x-goog-api-key": "AIzaFAKEFAKEFAKE",
+      "content-type": "application/json"
+    },
+    "body": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Say ok."
+            }
+          ]
+        }
+      ],
+      "generationConfig": {
+        "maxOutputTokens": 16
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "ok"
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP"
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 5,
+        "candidatesTokenCount": 1,
+        "totalTokenCount": 6
+      },
+      "modelVersion": "gemini-3.5-flash-lite"
+    }
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "gemini-api-key",
+    "model": "unknown",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 5,
+    "output_tokens": 1,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

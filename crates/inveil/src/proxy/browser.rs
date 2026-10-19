@@ -16,6 +16,7 @@ use super::{browser_ca, AppState, ProxyError};
 use crate::backend::new_event;
 use crate::brand;
 use crate::policy::ActivePolicy;
+use axum::http::HeaderMap;
 use bytes::BytesMut;
 use contract::{FailureCondition, Format};
 use engine::connect::{self, Cut, Frame};
@@ -302,13 +303,20 @@ impl ChatHandler {
             } else {
                 StatusCode::OK
             };
-            self.state.usage.report(new_event(
+            let evidence = self
+                .state
+                .signals
+                .classify_request(host, "", &HeaderMap::new(), &[]);
+            let mut event = new_event(
                 host,
                 &screened.model,
                 status.as_u16(),
                 blocked,
                 screened.report.findings.len(),
-            ));
+                evidence.billing,
+            );
+            evidence.stamp(&mut event);
+            self.state.usage.report(event);
         }
     }
 

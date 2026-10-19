@@ -1,0 +1,106 @@
+name: Provider canary
+
+# Every 6 hours: one tiny real request per provider through the real client, and a check that the public sources our
+# verified signals cite still say what they said. Failures post one Discord embed. A provider whose secret is not
+# set is reported as skipped, never as a failure.
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install libdbus (keyring secret-service backend)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Canary
+        id: canary
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CANARY_RESULTS: ${{ runner.temp }}/canary.json
+        run: cargo test -p inveil --test canary --locked -- --ignored canary_
+
+      - name: Evidence watch
+        id: evidence
+        continue-on-error: true
+        env:
+          CANARY_RESULTS: ${{ runner.temp }}/evidence.json
+        run: cargo test -p inveil --test canary --locked -- --ignored evidence_watch
+
+      - name: Alert Discord
+        id: alert
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESULTS_DIRECTORY: ${{ runner.temp }}
+        run: |
+          canary="$RESULTS_DIRECTORY/canary.json"
+          evidence="$RESULTS_DIRECTORY/evidence.json"
+          # A step that never got as far as writing results (a build failure, a crash) is itself a failure.
+          [ -s "$canary" ] || echo '[{"provider":"canary","status":"fail","detail":"the canary wrote no results; see the run log"}]' > "$canary"
+          [ -s "$evidence" ] || echo '[{"provider":"evidence-watch","status":"fail","detail":"the evidence watch wrote no results; see the run log"}]' > "$evidence"
+          jq -s 'add' "$canary" "$evidence" > "$RESULTS_DIRECTORY/all.json"
+
+          failed=$(jq '[.[] | select(.status == "fail")] | length' "$RESULTS_DIRECTORY/all.json")
+          jq -r '.[] | "\(.status)\t\(.provider)"' "$RESULTS_DIRECTORY/all.json"
+          if [ "$failed" -eq 0 ]; then
+            exit 0
+          fi
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "::warning::DISCORD_WEBHOOK_URL is not set, so the failure was not sent to Discord"
+            exit 0
+          fi
+
+          payload=$(jq --arg run "$RUN_URL" '{
+            embeds: [{
+              title: "Provider canary failed",
+              url: $run,
+              color: 15158332,
+              description: ([.[] | select(.status == "fail") | "**\(.provider)**: \(.detail)"] | join("\n") | .[0:4000]),
+              fields: [
+                {
+                  name: "Skipped",
+                  value: ([.[] | select(.status == "skipped") | "\(.provider): \(.detail)"] | join("\n") | if . == "" then "none" else .[0:1000] end),
+                  inline: false
+                },
+                { name: "Run", value: $run, inline: false }
+              ],
+              timestamp: (now | todate)
+            }]
+          }' "$RESULTS_DIRECTORY/all.json")
+          curl --silent --show-error --fail-with-body \
+            --header 'Content-Type: application/json' \
+            --data "$payload" \
+            "$DISCORD_WEBHOOK_URL" || echo "::warning::the Discord post failed"
+
+      - name: Fail the run when a check failed
+        if: always() && (steps.canary.outcome == 'failure' || steps.evidence.outcome == 'failure')
+        run: exit 1

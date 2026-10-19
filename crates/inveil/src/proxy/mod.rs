@@ -8,8 +8,11 @@ mod guard;
 pub use guard::GuardError;
 mod notify;
 mod screen;
+mod signals;
 mod usage_tap;
 
+#[cfg(test)]
+mod provider_tests;
 #[cfg(test)]
 mod test_support;
 
@@ -19,6 +22,7 @@ use crate::policy::ActivePolicy;
 use audit::{AuditAction, AuditLog};
 use notify::{Kind, Notifier};
 use screen::{Outcome, Screened};
+use signals::{SignalError, Signals};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -36,6 +40,8 @@ pub enum ProxyError {
     Client(reqwest::Error),
     #[error("cannot start the browser proxy: {0}")]
     Browser(String),
+    #[error(transparent)]
+    Signals(#[from] SignalError),
 }
 
 /// Everything a request needs, shared by both proxies.
@@ -44,6 +50,7 @@ pub struct AppState {
     active: watch::Receiver<Arc<ActivePolicy>>,
     pub http: reqwest::Client,
     pub usage: Arc<UsageReporter>,
+    signals: Signals,
     audit: AuditLog,
     notifier: Notifier,
 }
@@ -60,11 +67,13 @@ impl AppState {
             .build()
             .map_err(ProxyError::Client)?;
         let notifier = Notifier::new(config.notify);
+        let signals = Signals::builtin()?;
         Ok(Self {
             config,
             active,
             http,
             usage,
+            signals,
             audit,
             notifier,
         })

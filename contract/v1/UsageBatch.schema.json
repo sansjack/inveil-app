@@ -170,6 +170,45 @@
           "format": "uint64",
           "minimum": 0
         },
+        "cache_read_tokens": {
+          "description": "Prompt tokens served from the provider's cache. A subset of `input_tokens`.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 0
+        },
+        "cache_write_tokens": {
+          "description": "Prompt tokens written to the provider's cache. A subset of `input_tokens`.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 0
+        },
+        "billing": {
+          "$ref": "#/$defs/Billing",
+          "default": "unknown"
+        },
+        "served_by": {
+          "description": "The real upstream provider when `provider` (the host) is a gateway or reseller, e.g. `anthropic` on Bedrock.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "billing_signal": {
+          "description": "Id of the request signal that decided `billing`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_signal": {
+          "description": "Id of the request signal that produced `model`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "latency_ms": {
           "type": "integer",
           "format": "uint64",
@@ -202,6 +241,26 @@
         "status",
         "blocked",
         "findings"
+      ]
+    },
+    "Billing": {
+      "description": "How a request is paid for, judged from the host and the credential scheme only.",
+      "oneOf": [
+        {
+          "description": "A pay-per-token API key.",
+          "type": "string",
+          "const": "api"
+        },
+        {
+          "description": "A consumer or plan subscription: a browser chat app, or a coding tool signed in with an account.",
+          "type": "string",
+          "const": "subscription"
+        },
+        {
+          "description": "The client could not tell.",
+          "type": "string",
+          "const": "unknown"
+        }
       ]
     }
   }

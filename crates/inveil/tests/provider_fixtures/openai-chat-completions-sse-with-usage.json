@@ -1,0 +1,44 @@
+{
+  "covers": [],
+  "request": {
+    "host": "api.openai.com",
+    "path": "/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer sk-proj-FAKEFAKEFAKE",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "gpt-4.1-nano",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ],
+      "max_tokens": 16,
+      "stream": true,
+      "stream_options": {
+        "include_usage": true
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "data: {\"id\":\"chatcmpl-FAKE\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4.1-nano-2025-04-14\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}],\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-FAKE\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4.1-nano-2025-04-14\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-FAKE\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4.1-nano-2025-04-14\",\"choices\":[],\"usage\":{\"prompt_tokens\":2006,\"completion_tokens\":300,\"total_tokens\":2306,\"prompt_tokens_details\":{\"cached_tokens\":1920},\"completion_tokens_details\":{\"reasoning_tokens\":128}}}\n\ndata: [DONE]\n\n"
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "openai-api-key",
+    "model": "gpt-4.1-nano",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 2006,
+    "output_tokens": 300,
+    "cache_read_tokens": 1920,
+    "cache_write_tokens": 0
+  },
+  "note": "With stream_options.include_usage, every chunk has usage:null except one extra final chunk (empty choices) that carries the totals."
+}

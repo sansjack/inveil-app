@@ -3,7 +3,7 @@
 use super::UsageSink;
 use crate::policy::ActivePolicy;
 use crate::util::unix_millis;
-use contract::{ClientInfo, UsageEvent, MAX_USAGE_BATCH};
+use contract::{Billing, ClientInfo, UsageEvent, MAX_USAGE_BATCH};
 use engine::UsagePolicy;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 
 const CHANNEL_CAPACITY: usize = 1000;
-const MAX_PROVIDER_CHARS: usize = 64;
-const MAX_MODEL_CHARS: usize = 128;
+pub const MAX_PROVIDER_CHARS: usize = 64;
+pub const MAX_MODEL_CHARS: usize = 128;
 const UNKNOWN_MODEL: &str = "unknown";
 
 pub fn new_event(
@@ -21,6 +21,7 @@ pub fn new_event(
     status: u16,
     blocked: bool,
     findings: usize,
+    billing: Billing,
 ) -> UsageEvent {
     UsageEvent {
         id: uuid::Uuid::new_v4().to_string(),
@@ -33,6 +34,12 @@ pub fn new_event(
         },
         input_tokens: 0,
         output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        billing,
+        served_by: None,
+        billing_signal: None,
+        model_signal: None,
         latency_ms: 0,
         status,
         blocked,

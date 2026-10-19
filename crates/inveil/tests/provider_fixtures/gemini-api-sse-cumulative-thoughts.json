@@ -1,0 +1,45 @@
+{
+  "covers": [],
+  "request": {
+    "host": "generativelanguage.googleapis.com",
+    "path": "/v1beta/models/gemini-3.5-flash-lite:streamGenerateContent",
+    "headers": {
+      "x-goog-api-key": "AIzaFAKEFAKEFAKE",
+      "content-type": "application/json"
+    },
+    "body": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Say ok."
+            }
+          ]
+        }
+      ],
+      "generationConfig": {
+        "maxOutputTokens": 16
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"o\"}],\"role\":\"model\"}}],\"usageMetadata\":{\"promptTokenCount\":1200,\"cachedContentTokenCount\":1000,\"candidatesTokenCount\":1,\"thoughtsTokenCount\":90,\"totalTokenCount\":1291},\"modelVersion\":\"gemini-3.5-flash-lite\"}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"k\"}],\"role\":\"model\"}}],\"usageMetadata\":{\"promptTokenCount\":1200,\"cachedContentTokenCount\":1000,\"candidatesTokenCount\":2,\"thoughtsTokenCount\":150,\"totalTokenCount\":1352},\"modelVersion\":\"gemini-3.5-flash-lite\"}\r\n\r\n"
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "gemini-api-key",
+    "model": "gemini-3.5-flash-lite",
+    "model_signal": "gemini-api-model",
+    "served_by": null,
+    "input_tokens": 1200,
+    "output_tokens": 152,
+    "cache_read_tokens": 1000,
+    "cache_write_tokens": 0
+  },
+  "note": "Gemini streams usageMetadata on every chunk and the counts are cumulative, so the largest value of each counter is the final one."
+}

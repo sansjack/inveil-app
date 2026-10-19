@@ -1,0 +1,61 @@
+{
+  "covers": [
+    "bedrock-runtime-host",
+    "bedrock-model",
+    "bedrock-author"
+  ],
+  "request": {
+    "host": "bedrock-runtime.us-east-1.amazonaws.com",
+    "path": "/model/us.anthropic.claude-haiku-4-5-20251001-v1%3A0/invoke",
+    "headers": {
+      "authorization": "AWS4-HMAC-SHA256 Credential=AKIAFAKEFAKE/20261019/us-east-1/bedrock/aws4_request, SignedHeaders=host, Signature=FAKE",
+      "x-amz-date": "20261019T000000Z"
+    },
+    "body": {
+      "anthropic_version": "bedrock-2023-05-31",
+      "max_tokens": 16,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-amzn-bedrock-input-token-count": "12"
+    },
+    "body": {
+      "id": "msg_FAKE",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 4
+      }
+    }
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "bedrock-runtime-host",
+    "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "model_signal": "bedrock-model",
+    "served_by": "anthropic",
+    "input_tokens": 12,
+    "output_tokens": 4,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

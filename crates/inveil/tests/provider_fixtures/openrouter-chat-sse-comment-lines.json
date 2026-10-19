@@ -1,0 +1,41 @@
+{
+  "covers": [],
+  "request": {
+    "host": "openrouter.ai",
+    "path": "/api/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer sk-or-v1-FAKEFAKEFAKE",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "openai/gpt-4.1-nano",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ],
+      "max_tokens": 16,
+      "stream": true
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": ": OPENROUTER PROCESSING\n\n: OPENROUTER PROCESSING\n\ndata: {\"id\":\"chatcmpl-FAKE\",\"model\":\"openai/gpt-4.1-nano\",\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n: OPENROUTER PROCESSING\n\ndata: {\"id\":\"gen-FAKE\",\"model\":\"openai/gpt-4.1-nano\",\"choices\":[],\"usage\":{\"prompt_tokens\":2006,\"completion_tokens\":300,\"total_tokens\":2306,\"cost\":1e-06,\"prompt_tokens_details\":{\"cached_tokens\":1920},\"completion_tokens_details\":{\"reasoning_tokens\":128}}}\n\ndata: [DONE]\n\n"
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "openrouter-key",
+    "model": "openai/gpt-4.1-nano",
+    "model_signal": "openrouter-model",
+    "served_by": null,
+    "input_tokens": 2006,
+    "output_tokens": 300,
+    "cache_read_tokens": 1920,
+    "cache_write_tokens": 0
+  },
+  "note": "OpenRouter interleaves SSE comment lines (\": OPENROUTER PROCESSING\") with data; they must not break parsing. Usage is in the final chunk, with cached_tokens inside prompt_tokens."
+}

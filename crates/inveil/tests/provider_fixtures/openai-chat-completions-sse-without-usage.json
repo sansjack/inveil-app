@@ -1,0 +1,41 @@
+{
+  "covers": [],
+  "request": {
+    "host": "api.openai.com",
+    "path": "/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer sk-proj-FAKEFAKEFAKE",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "gpt-4.1-nano",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ],
+      "max_tokens": 16,
+      "stream": true
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "data: {\"id\":\"chatcmpl-FAKE\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4.1-nano-2025-04-14\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-FAKE\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4.1-nano-2025-04-14\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "openai-api-key",
+    "model": "gpt-4.1-nano",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  },
+  "note": "Without stream_options.include_usage the provider sends no usage at all, so tokens honestly stay 0."
+}

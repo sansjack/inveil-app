@@ -1,0 +1,60 @@
+{
+  "covers": [
+    "openai-api-key"
+  ],
+  "request": {
+    "host": "api.openai.com",
+    "path": "/v1/responses",
+    "headers": {
+      "authorization": "Bearer sk-proj-FAKEFAKEFAKE",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "gpt-4.1-nano",
+      "input": "Say ok.",
+      "max_output_tokens": 16
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "resp_FAKE",
+      "object": "response",
+      "status": "completed",
+      "model": "gpt-4.1-nano-2025-04-14",
+      "output": [
+        {
+          "type": "message",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "ok"
+            }
+          ]
+        }
+      ],
+      "usage": {
+        "input_tokens": 50,
+        "input_tokens_details": {
+          "cached_tokens": 40
+        },
+        "output_tokens": 3,
+        "total_tokens": 53
+      }
+    }
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "openai-api-key",
+    "model": "gpt-4.1-nano",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 50,
+    "output_tokens": 3,
+    "cache_read_tokens": 40,
+    "cache_write_tokens": 0
+  }
+}

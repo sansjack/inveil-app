@@ -1,0 +1,57 @@
+{
+  "note": "DRIFT: publishers/ became providers/: no model or publisher is claimed",
+  "covers": [],
+  "request": {
+    "host": "us-east5-aiplatform.googleapis.com",
+    "path": "/v1/projects/p/locations/us-east5/providers/anthropic/models/claude-sonnet-4@20250929:rawPredict",
+    "headers": {
+      "authorization": "Bearer ya29.FAKEFAKEFAKE"
+    },
+    "body": {
+      "anthropic_version": "vertex-2023-10-16",
+      "max_tokens": 16,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "msg_FAKE",
+      "type": "message",
+      "role": "assistant",
+      "model": "claude-sonnet-4@20250929",
+      "content": [
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 4
+      }
+    }
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "vertex-regional-host",
+    "model": "unknown",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 12,
+    "output_tokens": 4,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

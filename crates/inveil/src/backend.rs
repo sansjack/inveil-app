@@ -15,7 +15,7 @@ pub use enroll::{enroll, EnrollmentBundle};
 pub use policy_source::{FilePolicySource, HttpPolicySource};
 pub use policy_updater::PolicyUpdater;
 pub use snapshot::{Expiry, SnapshotError, SnapshotStore, VerifiedSnapshot};
-pub use usage::{new_event, spawn_uploader, UsageReporter};
+pub use usage::{new_event, spawn_uploader, UsageReporter, MAX_MODEL_CHARS, MAX_PROVIDER_CHARS};
 pub use usage_sink::{FileUsageSink, HttpUsageSink};
 
 use contract::{ClientInfo, UsageEvent};

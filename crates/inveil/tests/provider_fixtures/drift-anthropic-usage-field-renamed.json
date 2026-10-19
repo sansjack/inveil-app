@@ -1,0 +1,57 @@
+{
+  "note": "DRIFT: the provider renamed usage to token_usage",
+  "covers": [],
+  "request": {
+    "host": "api.anthropic.com",
+    "path": "/v1/messages",
+    "headers": {
+      "x-api-key": "sk-ant-api03-FAKEFAKEFAKE",
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "claude-haiku-5-5",
+      "max_tokens": 16,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "msg_FAKE",
+      "type": "message",
+      "role": "assistant",
+      "model": "claude-haiku-5-5",
+      "content": [
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "stop_reason": "end_turn",
+      "token_usage": {
+        "prompt": 12,
+        "completion": 4
+      }
+    }
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "anthropic-api-key",
+    "model": "claude-haiku-5-5",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

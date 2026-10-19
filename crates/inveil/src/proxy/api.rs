@@ -3,7 +3,8 @@
 use super::audit::AuditAction;
 use super::guard::{check_local_request, check_path, GuardError};
 use super::screen::{screen_body_offloaded, Outcome, Screened};
-use super::usage_tap::Tap;
+use super::signals::Evidence;
+use super::usage_tap::{Encoding, Tap};
 use super::{AppState, ProxyError};
 use crate::backend::new_event;
 use crate::brand;
@@ -57,6 +58,7 @@ struct ApiContext {
 struct Seen {
     model: String,
     findings: usize,
+    evidence: Evidence,
 }
 
 pub fn router(state: Arc<AppState>, port: u16) -> Router {
@@ -125,7 +127,17 @@ async fn handle(State(context): State<ApiContext>, request: Request<Body>) -> Re
             &unreadable_message(&why),
         );
     };
-    let mut seen = Seen::default();
+    // Signals read the body as sent: one that is compressed or rewritten below is not seen by a body signal.
+    let evidence = state.signals.classify_request(
+        &host_of(&route.upstream),
+        &route.path,
+        &parts.headers,
+        &raw,
+    );
+    let mut seen = Seen {
+        evidence,
+        ..Seen::default()
+    };
     if !raw.is_empty() {
         let started = Instant::now();
         let screened = screen_body_offloaded(
@@ -152,6 +164,7 @@ async fn handle(State(context): State<ApiContext>, request: Request<Body>) -> Re
         seen = Seen {
             model: screened.model.clone(),
             findings: screened.report.findings.len(),
+            evidence: seen.evidence,
         };
         match screened.outcome {
             Outcome::Allow => {}
@@ -160,13 +173,16 @@ async fn handle(State(context): State<ApiContext>, request: Request<Body>) -> Re
                 parts.headers.remove(CONTENT_ENCODING);
             }
             Outcome::Block { rule_ids, message } => {
-                state.usage.report(new_event(
+                let mut event = new_event(
                     &destination,
                     &seen.model,
                     StatusCode::BAD_REQUEST.as_u16(),
                     true,
                     seen.findings,
-                ));
+                    seen.evidence.billing,
+                );
+                seen.evidence.stamp(&mut event);
+                state.usage.report(event);
                 return blocked(&rule_ids.join(","), &message);
             }
         }
@@ -318,14 +334,29 @@ async fn forward(
     let body = match seen {
         None => Body::from_stream(upstream.bytes_stream()),
         Some(seen) => {
+            let host = host_of(&route.upstream);
             let event = new_event(
-                &host_of(&route.upstream),
+                &host,
                 &seen.model,
                 status.as_u16(),
                 false,
                 seen.findings,
+                seen.evidence.billing,
             );
-            let mut tap = Tap::new(state.usage.clone(), event, is_event_stream);
+            let reader = state.signals.response_reader(
+                &host,
+                &route.path,
+                &seen.evidence,
+                &response_headers,
+            );
+            let encoding = Encoding::from_headers(&response_headers);
+            let mut tap = Tap::new(
+                state.usage.clone(),
+                event,
+                is_event_stream,
+                encoding,
+                reader,
+            );
             Body::from_stream(upstream.bytes_stream().map(move |chunk| {
                 if let Ok(bytes) = &chunk {
                     tap.observe(bytes);

@@ -1,0 +1,42 @@
+{
+  "covers": [
+    "anthropic-oauth"
+  ],
+  "request": {
+    "host": "api.anthropic.com",
+    "path": "/v1/messages",
+    "headers": {
+      "authorization": "Bearer sk-ant-oat01-FAKEFAKEFAKE",
+      "anthropic-version": "2023-06-01"
+    },
+    "body": {
+      "model": "claude-haiku-5-5",
+      "max_tokens": 16,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ],
+      "stream": true
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-haiku-5-5\",\"usage\":{\"input_tokens\":10,\"cache_creation_input_tokens\":30,\"cache_read_input_tokens\":60,\"output_tokens\":1}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":9}}\n\n"
+  },
+  "expect": {
+    "billing": "subscription",
+    "billing_signal": "anthropic-oauth",
+    "model": "claude-haiku-5-5",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 100,
+    "output_tokens": 9,
+    "cache_read_tokens": 60,
+    "cache_write_tokens": 30
+  }
+}

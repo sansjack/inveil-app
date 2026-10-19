@@ -1,0 +1,65 @@
+{
+  "covers": [
+    "vertex-rep-host"
+  ],
+  "request": {
+    "host": "aiplatform.us.rep.googleapis.com",
+    "path": "/v1/projects/fake-project/locations/us/publishers/google/models/gemini-2.5-flash:generateContent",
+    "headers": {
+      "authorization": "Bearer ya29.FAKEFAKEFAKE"
+    },
+    "body": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Say ok."
+            }
+          ]
+        }
+      ],
+      "generationConfig": {
+        "maxOutputTokens": 16
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "ok"
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP"
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 5,
+        "candidatesTokenCount": 1,
+        "totalTokenCount": 6
+      },
+      "modelVersion": "gemini-3.5-flash-lite"
+    }
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "vertex-rep-host",
+    "model": "gemini-2.5-flash",
+    "model_signal": "vertex-model",
+    "served_by": "google",
+    "input_tokens": 5,
+    "output_tokens": 1,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

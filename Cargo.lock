@@ -1204,6 +1204,8 @@ version = "0.2.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "brotli",
+ "brotli-decompressor",
  "bytes",
  "contract",
  "engine",
@@ -1213,6 +1215,7 @@ dependencies = [
  "hudsucker",
  "hyper-rustls",
  "keyring",
+ "regex",
  "reqwest",
  "ring",
  "rustix",
@@ -1231,6 +1234,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "winreg",
+ "zstd",
 ]
 
 [[package]]

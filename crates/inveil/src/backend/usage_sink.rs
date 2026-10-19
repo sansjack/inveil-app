@@ -142,6 +142,7 @@ mod tests {
     use axum::extract::State;
     use axum::routing::post;
     use axum::{Json, Router};
+    use contract::Billing;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn client_info() -> ClientInfo {
@@ -162,6 +163,12 @@ mod tests {
             model: "m".into(),
             input_tokens: 1,
             output_tokens: 2,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            billing: Billing::Unknown,
+            served_by: None,
+            billing_signal: None,
+            model_signal: None,
             latency_ms: 3,
             status: 200,
             blocked: false,

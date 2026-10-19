@@ -1,0 +1,45 @@
+{
+  "covers": [],
+  "request": {
+    "host": "api.anthropic.com",
+    "path": "/v1/messages",
+    "headers": {
+      "x-api-key": "sk-ant-api03-FAKEFAKEFAKE",
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "claude-haiku-5-5",
+      "max_tokens": 16,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ],
+      "stream": true
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream",
+      "content-encoding": "gzip"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_FAKE\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-haiku-5-5\",\"content\":[],\"usage\":{\"input_tokens\":12,\"cache_read_input_tokens\":0,\"output_tokens\":1}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":4}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "compression": "gzip",
+    "truncate_bytes": 40
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "anthropic-api-key",
+    "model": "claude-haiku-5-5",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 12,
+    "output_tokens": 1,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  },
+  "note": "The connection dropped mid-stream, so the gzip trailer is missing. The stream is decoded as far as it goes and the event is still reported, with whatever was counted."
+}

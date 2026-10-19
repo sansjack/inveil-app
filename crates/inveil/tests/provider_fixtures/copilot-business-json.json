@@ -1,0 +1,58 @@
+{
+  "covers": [
+    "copilot-business"
+  ],
+  "request": {
+    "host": "api.business.githubcopilot.com",
+    "path": "/chat/completions",
+    "headers": {
+      "authorization": "Bearer tid=FAKE;exp=0"
+    },
+    "body": {
+      "model": "gpt-4.1",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "chatcmpl-FAKE",
+      "object": "chat.completion",
+      "model": "gpt-4.1-nano-2025-04-14",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "ok"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 9,
+        "completion_tokens": 2,
+        "total_tokens": 11
+      }
+    }
+  },
+  "expect": {
+    "billing": "subscription",
+    "billing_signal": "copilot-business",
+    "model": "gpt-4.1",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 9,
+    "output_tokens": 2,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

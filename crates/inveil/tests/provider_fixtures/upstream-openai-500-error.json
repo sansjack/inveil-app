@@ -1,0 +1,42 @@
+{
+  "note": "An upstream error: status, headers and body must reach the client unchanged and no tokens are counted.",
+  "covers": [
+    "openai-api-key"
+  ],
+  "request": {
+    "host": "api.openai.com",
+    "path": "/v1/responses",
+    "headers": {
+      "authorization": "Bearer sk-proj-FAKEFAKEFAKE",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "gpt-4.1-nano",
+      "input": "Say ok.",
+      "max_output_tokens": 16
+    }
+  },
+  "response": {
+    "status": 500,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": {
+        "message": "server error",
+        "type": "server_error"
+      }
+    }
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "openai-api-key",
+    "model": "gpt-4.1-nano",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

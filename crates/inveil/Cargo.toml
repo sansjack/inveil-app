@@ -25,6 +25,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 toml = "0.8"
 toml_edit = "0.22"
 semver = "1"
+regex = "1"
 axum = "0.7"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal", "fs"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "stream", "json", "blocking"] }
@@ -36,6 +37,9 @@ http-body-util = "0.1"
 bytes = "1"
 time = "0.3"
 uuid = { version = "1", features = ["v4"] }
+flate2 = "1"
+zstd = "0.14"
+brotli-decompressor = "6"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 
 [target.'cfg(unix)'.dependencies]
@@ -46,7 +50,7 @@ winreg = "0.55"
 
 [dev-dependencies]
 tempfile = "3"
-flate2 = "1"
+brotli = "9"
 rustls-webpki = { version = "0.103", features = ["aws-lc-rs"] }
 
 [lints]

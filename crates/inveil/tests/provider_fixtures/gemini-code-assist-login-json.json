@@ -1,0 +1,74 @@
+{
+  "covers": [
+    "gemini-code-assist-login",
+    "gemini-code-assist-model"
+  ],
+  "request": {
+    "host": "cloudcode-pa.googleapis.com",
+    "path": "/v1internal:generateContent",
+    "headers": {
+      "authorization": "Bearer ya29.FAKEFAKEFAKE"
+    },
+    "body": {
+      "model": "gemini-2.5-pro",
+      "project": "fake-project",
+      "user_prompt_id": "fake",
+      "request": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Say ok."
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 16
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "response": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "text": "ok"
+                }
+              ],
+              "role": "model"
+            },
+            "finishReason": "STOP"
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 5,
+          "candidatesTokenCount": 1,
+          "totalTokenCount": 6
+        },
+        "modelVersion": "gemini-3.5-flash-lite"
+      },
+      "traceId": "fake"
+    }
+  },
+  "expect": {
+    "billing": "subscription",
+    "billing_signal": "gemini-code-assist-login",
+    "model": "gemini-2.5-pro",
+    "model_signal": "gemini-code-assist-model",
+    "served_by": null,
+    "input_tokens": 5,
+    "output_tokens": 1,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

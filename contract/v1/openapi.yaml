@@ -440,6 +440,38 @@ components:
         output_tokens:
           type: integer
           minimum: 0
+        cache_read_tokens:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Prompt tokens served from the provider's cache. A subset of `input_tokens`.
+        cache_write_tokens:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Prompt tokens written to the provider's cache. A subset of `input_tokens`.
+        billing:
+          type: string
+          enum: [api, subscription, unknown]
+          default: unknown
+          description: >-
+            How the request is paid for, judged from the host and credential scheme (never the credential itself).
+            `api` is a pay-per-token key; `subscription` is a consumer plan (browser chat apps, or a coding tool signed
+            in with an account); `unknown` when the client could not tell.
+        served_by:
+          type: [string, "null"]
+          maxLength: 64
+          description: >-
+            The real upstream provider when `provider` (the host) is a gateway or reseller, for example `anthropic` on
+            Bedrock. Omitted when the client could not tell.
+        billing_signal:
+          type: [string, "null"]
+          maxLength: 64
+          description: Id of the client's request signal that decided `billing`. Omitted when none did.
+        model_signal:
+          type: [string, "null"]
+          maxLength: 64
+          description: Id of the client's request signal that produced `model`. Omitted when none did.
         latency_ms:
           type: integer
           minimum: 0

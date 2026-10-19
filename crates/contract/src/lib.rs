@@ -19,7 +19,7 @@ pub use snapshot::{
     Action, Endpoint, FailMode, FailureCondition, FailureModes, Format, Host, Match, PiiRule,
     Settings, Snapshot, Tool, UsageReporting, Validator, Via, SNAPSHOT_SCHEMA,
 };
-pub use usage::{ClientInfo, UsageBatch, UsageEvent, MAX_USAGE_BATCH};
+pub use usage::{Billing, ClientInfo, UsageBatch, UsageEvent, MAX_USAGE_BATCH};
 
 #[cfg(test)]
 mod tests {

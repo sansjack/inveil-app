@@ -1,0 +1,69 @@
+{
+  "covers": [],
+  "request": {
+    "host": "api.openai.com",
+    "path": "/v1/chat/completions",
+    "headers": {
+      "authorization": "Bearer sk-proj-FAKEFAKEFAKE",
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "gpt-4.1-nano",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Say ok."
+        }
+      ],
+      "max_tokens": 16
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "id": "chatcmpl-FAKE",
+      "object": "chat.completion",
+      "model": "gpt-4.1-nano-2025-04-14",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "ok"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 2006,
+        "completion_tokens": 300,
+        "total_tokens": 2306,
+        "prompt_tokens_details": {
+          "cached_tokens": 1920,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 128,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      }
+    }
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "openai-api-key",
+    "model": "gpt-4.1-nano",
+    "model_signal": null,
+    "served_by": null,
+    "input_tokens": 2006,
+    "output_tokens": 300,
+    "cache_read_tokens": 1920,
+    "cache_write_tokens": 0
+  },
+  "note": "prompt_tokens includes cached_tokens; reasoning_tokens are already inside completion_tokens, so they are not added again."
+}

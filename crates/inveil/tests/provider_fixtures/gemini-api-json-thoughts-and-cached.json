@@ -1,0 +1,67 @@
+{
+  "covers": [],
+  "request": {
+    "host": "generativelanguage.googleapis.com",
+    "path": "/v1beta/models/gemini-3.5-flash-lite:generateContent",
+    "headers": {
+      "x-goog-api-key": "AIzaFAKEFAKEFAKE",
+      "content-type": "application/json"
+    },
+    "body": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Say ok."
+            }
+          ]
+        }
+      ],
+      "generationConfig": {
+        "maxOutputTokens": 16
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "ok"
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP"
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 1200,
+        "cachedContentTokenCount": 1000,
+        "candidatesTokenCount": 20,
+        "thoughtsTokenCount": 150,
+        "totalTokenCount": 1370
+      },
+      "modelVersion": "gemini-3.5-flash-lite"
+    }
+  },
+  "expect": {
+    "billing": "api",
+    "billing_signal": "gemini-api-key",
+    "model": "gemini-3.5-flash-lite",
+    "model_signal": "gemini-api-model",
+    "served_by": null,
+    "input_tokens": 1200,
+    "output_tokens": 170,
+    "cache_read_tokens": 1000,
+    "cache_write_tokens": 0
+  },
+  "note": "Gemini 2.5+ reports thinking apart from candidatesTokenCount; both are billed as output. promptTokenCount already includes the cached tokens (https://ai.google.dev/api/generate-content#UsageMetadata). toolUsePromptTokenCount is ignored."
+}
