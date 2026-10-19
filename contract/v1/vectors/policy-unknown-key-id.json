@@ -1,0 +1,9 @@
+{
+  "payload": "{\"schema\":1,\"version\":7,\"issued_at\":1700000000,\"expires_at\":1700086400,\"audience\":\"org-example\",\"pii\":[{\"id\":\"ssn\",\"label\":\"US Social Security number\",\"pattern\":\"\\\\b\\\\d{3}-\\\\d{2}-\\\\d{4}\\\\b\",\"validator\":\"ssn\",\"action\":\"block\",\"enabled\":true}],\"tools\":[{\"id\":\"claude-code\",\"name\":\"Claude Code\",\"via\":\"local\",\"enabled\":true,\"upstream\":\"https://api.anthropic.com\",\"prefix\":null,\"env_var\":\"ANTHROPIC_BASE_URL\",\"endpoints\":[{\"path\":\"/v1/messages\",\"match\":\"exact\",\"format\":\"json\"}],\"hosts\":[]}],\"ca_domains\":[],\"settings\":{\"dry_run\":false,\"block_unscannable\":null,\"max_tokens\":null,\"deny\":[],\"browser_fail_closed\":null,\"allowed_upstreams\":[],\"min_poll_seconds\":null,\"min_client_version\":null,\"allow_debug\":null,\"usage_reporting\":\"optional\",\"heartbeat_seconds\":null,\"allow_offline\":null,\"fail_closed_on_expiry\":false,\"failure_modes\":{\"default\":null,\"unscannable\":null,\"scan_error\":null,\"policy_expired\":null,\"service_down\":null}},\"revoked_key_ids\":[]}",
+  "signatures": [
+    {
+      "key_id": "attacker-1",
+      "signature": "2UgGUTp9akcv1FUvzoit0HnsWVLoCF8p+ER+rlrNBhHhL2e7QJfWwU37ny0UWN4qbMhr1EdUe4BsqdC4m7PJAw=="
+    }
+  ]
+}

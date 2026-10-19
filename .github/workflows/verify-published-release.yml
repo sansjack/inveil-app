@@ -1,0 +1,193 @@
+# Run by hand after the maintainer has added the offline co-signature and published the release.
+#
+# It trusts nothing from the release run: it downloads the PUBLISHED assets, checks the attestation, runs the
+# published installer exactly as a user would (curl | sh over https, no testing overrides) on every OS, and runs
+# `inveil verify` with the full signature threshold against the published manifest. Treat a release as not shipped
+# until this passes; if it fails, turn the release back into a draft and investigate (docs/RELEASING.md).
+name: Verify published release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, vX.Y.Z or vX.Y.Z-rc.N"
+        required: true
+        type: string
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  fetch:
+    name: fetch published assets
+    runs-on: ubuntu-latest
+    # Holds a read-only token. It downloads files and runs `gh attestation verify`; it executes nothing downloaded.
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      channel: ${{ steps.check.outputs.channel }}
+      manifest: ${{ steps.check.outputs.manifest }}
+    steps:
+      - name: Check the tag and that the release is published
+        id: check
+        run: |
+          if ! [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "::error::$TAG is not vX.Y.Z or vX.Y.Z-rc.N"
+            exit 1
+          fi
+          is_draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)
+          if [ "$is_draft" != false ]; then
+            echo "::error::$TAG is still a draft; this workflow checks published assets"
+            exit 1
+          fi
+          if [[ $TAG == *-rc.* ]]; then
+            channel=beta
+            manifest=update-manifest-beta.json.sig
+          else
+            channel=stable
+            manifest=update-manifest.json.sig
+          fi
+          {
+            echo "version=${TAG#v}"
+            echo "channel=$channel"
+            echo "manifest=$manifest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download every published asset
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir published
+
+      - name: Verify build provenance of the binaries and installers
+        # The manifest envelope is excluded: the co-signature replaced the file the build attested.
+        run: |
+          cd published
+          for file in inveil-linux-* inveil-macos-* inveil-windows-* install.sh install.ps1 SHA256SUMS; do
+            case $file in *.tar.gz | *.zip) continue ;; esac
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY"
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: published-assets
+          path: published/*
+          if-no-files-found: error
+
+  verify:
+    name: verify published release (${{ matrix.os_name }}-${{ matrix.arch }})
+    needs: fetch
+    runs-on: ${{ matrix.runner }}
+    # No token and no secret: this job executes the published installer and binary.
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04, os_name: linux, arch: x86_64, ext: "" }
+          - { runner: ubuntu-22.04-arm, os_name: linux, arch: aarch64, ext: "" }
+          - { runner: macos-15-intel, os_name: macos, arch: x86_64, ext: "" }
+          - { runner: macos-latest, os_name: macos, arch: aarch64, ext: "" }
+          - { runner: windows-latest, os_name: windows, arch: x86_64, ext: ".exe" }
+    env:
+      TAG: ${{ inputs.tag }}
+      VERSION: ${{ needs.fetch.outputs.version }}
+      CHANNEL: ${{ needs.fetch.outputs.channel }}
+      MANIFEST: ${{ needs.fetch.outputs.manifest }}
+      BINARY_NAME: inveil-${{ matrix.os_name }}-${{ matrix.arch }}${{ matrix.ext }}
+      UPDATE_PUBLIC_KEYS: ${{ vars.UPDATE_PUBLIC_KEYS }}
+      UPDATE_MANIFEST_THRESHOLD: ${{ vars.UPDATE_MANIFEST_THRESHOLD }}
+      ALLOW_UNOFFICIAL_RELEASE: ${{ vars.ALLOW_UNOFFICIAL_RELEASE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: published-assets
+          path: dl
+
+      - name: Decide the required signature count
+        run: |
+          required=${UPDATE_MANIFEST_THRESHOLD:-0}
+          case $required in '' | *[!0-9]*) echo "::error::UPDATE_MANIFEST_THRESHOLD must be a number"; exit 1 ;; esac
+          if [ "$ALLOW_UNOFFICIAL_RELEASE" != true ] && [ "$required" -lt 2 ]; then
+            echo "::error::an official release needs UPDATE_MANIFEST_THRESHOLD of at least 2 (got '$required')"
+            exit 1
+          fi
+          if [ -z "$UPDATE_PUBLIC_KEYS" ]; then
+            echo "::error::UPDATE_PUBLIC_KEYS is not set"
+            exit 1
+          fi
+          echo "REQUIRED_SIGNATURES=$required" >> "$GITHUB_ENV"
+
+      - name: Check SHA256SUMS and that the installers pin the expected keys
+        working-directory: dl
+        run: |
+          if command -v sha256sum > /dev/null; then
+            sha256sum -c SHA256SUMS
+          else
+            shasum -a 256 -c SHA256SUMS
+          fi
+          grep -Fxq "UPDATE_PUBLIC_KEYS='$UPDATE_PUBLIC_KEYS'" install.sh ||
+            { echo "::error::install.sh does not pin exactly the repository's UPDATE_PUBLIC_KEYS"; exit 1; }
+          grep -Fq "'$UPDATE_PUBLIC_KEYS'" install.ps1 ||
+            { echo "::error::install.ps1 does not pin exactly the repository's UPDATE_PUBLIC_KEYS"; exit 1; }
+
+      - name: Published manifest matches the published files and carries every signature
+        run: |
+          report=$(python3 .github/scripts/update_manifest.py check --dist dl --version "$VERSION" --envelope "dl/$MANIFEST")
+          echo "$report"
+          signatures=$(echo "$report" | sed -n 's/^signatures=//p')
+          if [ "$signatures" -lt "$REQUIRED_SIGNATURES" ]; then
+            echo "::error::the published manifest has $signatures signature(s), $REQUIRED_SIGNATURES required. The co-signature was not uploaded."
+            exit 1
+          fi
+
+      - name: Run the published install.sh over https (macOS and Linux)
+        if: runner.os != 'Windows'
+        run: |
+          install_dir=$(mktemp -d)/bin
+          args=(--no-enroll --version "$VERSION")
+          if [ "$CHANNEL" = beta ]; then args+=(--channel beta); fi
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/install.sh" -o published-install.sh
+          INVEIL_INSTALL_DIR="$install_dir" sh published-install.sh "${args[@]}"
+          "$install_dir/inveil" --version
+          echo "INSTALL_DIR=$install_dir" >> "$GITHUB_ENV"
+          echo "INSTALLED_BINARY=$install_dir/inveil" >> "$GITHUB_ENV"
+
+      - name: Run the published install.ps1 over https (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'inveil-install'
+          $env:INVEIL_INSTALL_DIR = $installDir
+          $arguments = @('-NoEnroll', '-Version', $env:VERSION)
+          if ($env:CHANNEL -eq 'beta') { $arguments += @('-Channel', 'beta') }
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/install.ps1"
+          & ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing $url).Content)) @arguments
+          & (Join-Path $installDir 'inveil.exe') --version
+          "INSTALLED_BINARY=$(Join-Path $installDir 'inveil.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: inveil verify with the full threshold
+        run: |
+          key_args=()
+          for entry in $UPDATE_PUBLIC_KEYS; do
+            key_args+=(--pinned-key "$entry")
+          done
+          "$INSTALLED_BINARY" verify --role update "${key_args[@]}" --min-signatures "$REQUIRED_SIGNATURES" \
+            --channel "$CHANNEL" --artifact "$INSTALLED_BINARY" "dl/$MANIFEST"
+
+      - name: The installed binary is the published binary
+        run: |
+          if command -v sha256sum > /dev/null; then hash=sha256sum; else hash="shasum -a 256"; fi
+          installed=$($hash "$INSTALLED_BINARY" | cut -d' ' -f1)
+          published=$($hash "dl/$BINARY_NAME" | cut -d' ' -f1)
+          [ "$installed" = "$published" ] || { echo "::error::installed binary differs from the published $BINARY_NAME"; exit 1; }

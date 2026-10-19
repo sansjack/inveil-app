@@ -1,0 +1,528 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Snapshot",
+  "description": "The payload of a signed rules response.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "format": "uint8",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "version": {
+      "description": "Strictly increasing per audience. A client never accepts a lower version, nor the same version with other content.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "issued_at": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "expires_at": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "audience": {
+      "description": "Organisation this snapshot is for; the client rejects it when it differs from its enrolled organisation.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "pii": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PiiRule"
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Tool"
+      },
+      "default": []
+    },
+    "ca_domains": {
+      "description": "The only domains the browser CA may cover.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "settings": {
+      "$ref": "#/$defs/Settings",
+      "default": {
+        "dry_run": null,
+        "block_unscannable": null,
+        "max_tokens": null,
+        "deny": [],
+        "browser_fail_closed": null,
+        "allowed_upstreams": [],
+        "min_poll_seconds": null,
+        "min_client_version": null,
+        "allow_debug": null,
+        "usage_reporting": null,
+        "heartbeat_seconds": null,
+        "allow_offline": null,
+        "fail_closed_on_expiry": false,
+        "failure_modes": {
+          "default": null,
+          "unscannable": null,
+          "scan_error": null,
+          "policy_expired": null,
+          "service_down": null
+        }
+      }
+    },
+    "revoked_key_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "version",
+    "issued_at",
+    "expires_at",
+    "pii"
+  ],
+  "$defs": {
+    "PiiRule": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "validator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Validator"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "action": {
+          "$ref": "#/$defs/Action"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "pattern",
+        "action",
+        "enabled"
+      ]
+    },
+    "Validator": {
+      "type": "string",
+      "enum": [
+        "luhn",
+        "ssn",
+        "iban"
+      ]
+    },
+    "Action": {
+      "type": "string",
+      "enum": [
+        "block",
+        "log",
+        "redact"
+      ]
+    },
+    "Tool": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "via": {
+          "$ref": "#/$defs/Via"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "upstream": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prefix": {
+          "description": "Local tools: path the tool uses on the client's localhost port; `None` is the default route.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env_var": {
+          "description": "Local tools: environment variable (e.g. `ANTHROPIC_BASE_URL`) the installer points at the proxy.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "endpoints": {
+          "description": "Local tools: routes, as the upstream sees them, that carry chat.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Endpoint"
+          }
+        },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Host"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "via",
+        "enabled",
+        "endpoints",
+        "hosts"
+      ]
+    },
+    "Via": {
+      "oneOf": [
+        {
+          "description": "The tool is pointed at the client's localhost proxy, which forwards to `upstream`.",
+          "type": "string",
+          "const": "local"
+        },
+        {
+          "description": "The browser or system proxy catches the traffic and the client decrypts `hosts`.",
+          "type": "string",
+          "const": "browser"
+        }
+      ]
+    },
+    "Endpoint": {
+      "description": "A route that carries chat messages: the only requests the client reads.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "match": {
+          "$ref": "#/$defs/Match"
+        },
+        "format": {
+          "$ref": "#/$defs/Format"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "match",
+        "format"
+      ]
+    },
+    "Match": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "prefix"
+      ]
+    },
+    "Format": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "json",
+            "protobuf",
+            "protobuf-framed"
+          ]
+        },
+        {
+          "description": "`application/x-www-form-urlencoded`; the chat text sits in the values.",
+          "type": "string",
+          "const": "form"
+        },
+        {
+          "description": "A WebSocket handshake route: the JSON text frames the browser sends are read.",
+          "type": "string",
+          "const": "websocket-json"
+        },
+        {
+          "description": "A streaming Connect / gRPC-web request, read frame by frame.",
+          "type": "string",
+          "const": "connect-stream"
+        }
+      ]
+    },
+    "Host": {
+      "description": "A host the browser proxy decrypts, and the paths on it that carry chat.",
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Endpoint"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "endpoints"
+      ]
+    },
+    "Settings": {
+      "description": "Policy knobs the backend enforces. Local configuration may only make them stricter.",
+      "type": "object",
+      "properties": {
+        "dry_run": {
+          "description": "`Some(false)` forces enforcement; `None` leaves the choice to local config.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "block_unscannable": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "max_tokens": {
+          "description": "Maximum estimated tokens per request; `0` or `None` means no server limit.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0,
+          "default": null
+        },
+        "deny": {
+          "description": "Regexes blocked in addition to the rules.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "browser_fail_closed": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "allowed_upstreams": {
+          "description": "Hosts, `https://host`, the local `upstream` setting must be one of. Empty means unrestricted.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "min_poll_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "default": null
+        },
+        "min_client_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "allow_debug": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "usage_reporting": {
+          "description": "`None` means `Optional`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UsageReporting"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "heartbeat_seconds": {
+          "description": "With `Required`, a heartbeat is sent at this interval even when there are no events, so the backend can\ntell a silent client from an idle one.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "default": null
+        },
+        "allow_offline": {
+          "description": "Whether local configuration may run the client fully offline. Managed deployments normally say no.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "fail_closed_on_expiry": {
+          "description": "Block all chat traffic when the last good snapshot has expired and no fresh one can be fetched.",
+          "type": "boolean",
+          "default": false
+        },
+        "failure_modes": {
+          "$ref": "#/$defs/FailureModes",
+          "default": {
+            "default": null,
+            "unscannable": null,
+            "scan_error": null,
+            "policy_expired": null,
+            "service_down": null
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "UsageReporting": {
+      "description": "Whether the client must report usage to the backend. Decided by the administrator in the signed snapshot.",
+      "oneOf": [
+        {
+          "description": "Events and heartbeats are sent; local configuration cannot turn them off.",
+          "type": "string",
+          "const": "required"
+        },
+        {
+          "description": "Local configuration decides.",
+          "type": "string",
+          "const": "optional"
+        },
+        {
+          "description": "Nothing is sent and the backend needs no ingest endpoint.",
+          "type": "string",
+          "const": "disabled"
+        }
+      ]
+    },
+    "FailureModes": {
+      "description": "Behaviour per failure condition. Each override falls back to `default`; local config may only choose `Closed`.",
+      "type": "object",
+      "properties": {
+        "default": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FailMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "unscannable": {
+          "description": "The request body cannot be read or scanned (unknown encoding, base64 media).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FailMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "scan_error": {
+          "description": "The scanner timed out or failed internally.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FailMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "policy_expired": {
+          "description": "The snapshot has expired and no fresh one can be fetched.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FailMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "service_down": {
+          "description": "The local service is down. Applied when routing is written (PAC fallback, managed settings), not at runtime.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FailMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "FailMode": {
+      "description": "What to do when the client cannot make a normal decision.",
+      "oneOf": [
+        {
+          "description": "Let the traffic through and record that it was passed because of a failure.",
+          "type": "string",
+          "const": "open"
+        },
+        {
+          "description": "Block the traffic.",
+          "type": "string",
+          "const": "closed"
+        }
+      ]
+    }
+  }
+}

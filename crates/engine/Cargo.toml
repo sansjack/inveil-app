@@ -1,0 +1,32 @@
+[package]
+name = "engine"
+description = "Scanning, policy and signature verification for inveil. No network or OS access."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+contract.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ring.workspace = true
+base64.workspace = true
+regex = "1"
+semver = "1"
+flate2 = "1"
+zstd = "0.14"
+bytes = "1"
+form_urlencoded = "1"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "scan"
+harness = false

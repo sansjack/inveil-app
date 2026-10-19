@@ -1,0 +1,27 @@
+name: Security vulnerability (redirect)
+description: Do not file vulnerabilities here
+labels: [security]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Do not disclose a vulnerability in a public issue
+
+        Use [private vulnerability reporting](https://github.com/sansjack/inveil-app/security/advisories/new)
+        or follow [SECURITY.md](https://github.com/sansjack/inveil-app/blob/main/SECURITY.md).
+
+        Use this form only for non-sensitive security hardening ideas that are safe to discuss publicly
+        (for example a missing lint, a documentation gap, or a dependency policy change).
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: This is not an exploitable vulnerability and contains no secrets or exploit details
+          required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Hardening suggestion
+    validations:
+      required: true

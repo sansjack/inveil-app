@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use Inveil in research or a publication, please cite it as below."
+title: "Inveil"
+type: software
+abstract: "A local proxy that blocks or redacts sensitive data before it reaches an AI tool, with a bring-your-own-backend contract."
+authors:
+  - name: "Inveil contributors"
+repository-code: "https://github.com/sansjack/inveil-app"
+license: Apache-2.0
+keywords:
+  - data loss prevention
+  - proxy
+  - privacy
+  - ai

@@ -1,0 +1,725 @@
+# Release pipeline. Push a tag vX.Y.Z (stable) or vX.Y.Z-rc.N (beta channel) from main.
+#
+# Privilege layout: jobs that compile dependencies (build, package, seal) hold no secrets and no write token.
+# Jobs that hold secrets use two separate protected environments, so approving one never exposes the other's
+# secrets: sign-platform (Apple/Windows identities) uses "release-platform-signing" and sign-manifest (the update
+# key) uses "release-manifest-signing". Neither runs a compiler or executes a downloaded binary. The only job with a write token
+# (draft-release) and the one that reads the draft back (fetch-draft) execute nothing from the release.
+# Secrets and variables are listed in docs/RELEASING.md. A fork without them still builds, tests and packages when
+# the repository variable ALLOW_UNOFFICIAL_RELEASE=true; official releases fail without two update keys, and CI never holds both of
+# them: the second signature is added offline by a maintainer, then verify-published-release.yml checks the result.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  preflight:
+    name: Check tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
+      channel: ${{ steps.check.outputs.channel }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+      manifest: ${{ steps.check.outputs.manifest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Official releases need a 2-of-N update signing setup
+        env:
+          UPDATE_PUBLIC_KEYS: ${{ vars.UPDATE_PUBLIC_KEYS }}
+          UPDATE_MANIFEST_THRESHOLD: ${{ vars.UPDATE_MANIFEST_THRESHOLD }}
+          UPDATE_KEY_ID: ${{ vars.UPDATE_KEY_ID }}
+          ALLOW_UNOFFICIAL_RELEASE: ${{ vars.ALLOW_UNOFFICIAL_RELEASE }}
+        run: sh .github/scripts/check-signing-policy.sh
+
+      # Defence in depth, not a boundary: a tag on an old commit runs that old commit's copy of this workflow, so
+      # this check can only be trusted when the tag ruleset (docs/RELEASING.md) limits who can create tags and the
+      # environments restrict which refs may sign. It catches an honest mistake and a lazy attacker.
+      - name: Tag commit must be the tip of main (or within the allowance)
+        env:
+          RELEASE_MAX_COMMITS_BEHIND: ${{ vars.RELEASE_MAX_COMMITS_BEHIND }}
+        run: |
+          allowed=${RELEASE_MAX_COMMITS_BEHIND:-0}
+          case $allowed in '' | *[!0-9]*) echo "::error::RELEASE_MAX_COMMITS_BEHIND must be a number"; exit 1 ;; esac
+          behind=$(git rev-list --count "$GITHUB_SHA..origin/main")
+          if [ "$behind" -gt "$allowed" ]; then
+            echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is $behind commit(s) behind main; at most $allowed allowed (RELEASE_MAX_COMMITS_BEHIND). Tag the current tip of main."
+            exit 1
+          fi
+          echo "Tag commit is $behind commit(s) behind main (allowance $allowed)."
+
+      - name: Tag must match the workspace version and be on main
+        id: check
+        run: |
+          tag=$GITHUB_REF_NAME
+          if ! [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "::error::$tag is not vX.Y.Z or vX.Y.Z-rc.N"
+            exit 1
+          fi
+          version=${tag#v}
+
+          workspace_version=$(cargo metadata --no-deps --format-version 1 --locked |
+            python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "inveil"))')
+          if [ "$workspace_version" != "$version" ]; then
+            echo "::error::tag $tag does not match the workspace version $workspace_version"
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$tag ($GITHUB_SHA) is not reachable from main"
+            exit 1
+          fi
+
+          if [[ $tag == *-rc.* ]]; then
+            channel=beta
+            prerelease=true
+            manifest=update-manifest-beta.json
+          else
+            channel=stable
+            prerelease=false
+            manifest=update-manifest.json
+          fi
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "channel=$channel"
+            echo "prerelease=$prerelease"
+            echo "manifest=$manifest"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build (${{ matrix.target }})
+    needs: preflight
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Linux builds use the oldest supported runner image to keep the glibc requirement low.
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-22.04, os_name: linux, arch: x86_64, ext: "", test: true }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm, os_name: linux, arch: aarch64, ext: "", test: true }
+          - { target: x86_64-apple-darwin, runner: macos-15-intel, os_name: macos, arch: x86_64, ext: "", test: true }
+          - { target: aarch64-apple-darwin, runner: macos-latest, os_name: macos, arch: aarch64, ext: "", test: true }
+          - { target: x86_64-pc-windows-msvc, runner: windows-latest, os_name: windows, arch: x86_64, ext: ".exe", test: true }
+          # Cross-compiled on an x86_64 runner: the result cannot be executed there.
+          - { target: aarch64-pc-windows-msvc, runner: windows-latest, os_name: windows, arch: aarch64, ext: ".exe", test: false }
+    env:
+      TARGET: ${{ matrix.target }}
+      BINARY_NAME: inveil-${{ matrix.os_name }}-${{ matrix.arch }}${{ matrix.ext }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install libdbus (keyring secret-service backend)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Add Rust target
+        run: rustup target add "$TARGET"
+
+      - name: Set reproducibility flags
+        run: |
+          cargo_home=${CARGO_HOME:-${USERPROFILE:-$HOME}/.cargo}
+          flags="--remap-path-prefix=${GITHUB_WORKSPACE}=/build --remap-path-prefix=${cargo_home}=/cargo"
+          if [ "${{ matrix.os_name }}" = windows ]; then
+            flags="$flags -C target-feature=+crt-static"
+          fi
+          echo "RUSTFLAGS=$flags" >> "$GITHUB_ENV"
+
+      - name: Test
+        if: matrix.test
+        run: cargo test --workspace --locked --target "$TARGET"
+
+      - name: Build
+        run: cargo build --release --locked --target "$TARGET" -p inveil
+
+      - name: Stage raw binary
+        run: |
+          mkdir stage
+          cp "target/$TARGET/release/inveil${{ matrix.ext }}" "stage/$BINARY_NAME"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bin-${{ matrix.target }}
+          path: stage/*
+          if-no-files-found: error
+
+  sign-platform:
+    name: platform signature (${{ matrix.target }})
+    needs: [preflight, build]
+    runs-on: ${{ matrix.runner }}
+    # Holds the Apple and Windows signing identities. It compiles nothing, checks out no repository code and runs
+    # only the signing tools on the staged binary. Separate from the update key's environment on purpose.
+    environment: release-platform-signing
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { target: x86_64-apple-darwin, runner: macos-15-intel, os_name: macos, arch: x86_64, ext: "", sign: macos }
+          - { target: aarch64-apple-darwin, runner: macos-latest, os_name: macos, arch: aarch64, ext: "", sign: macos }
+          - { target: x86_64-pc-windows-msvc, runner: windows-latest, os_name: windows, arch: x86_64, ext: ".exe", sign: windows }
+          - { target: aarch64-pc-windows-msvc, runner: windows-latest, os_name: windows, arch: aarch64, ext: ".exe", sign: windows }
+    env:
+      BINARY_NAME: inveil-${{ matrix.os_name }}-${{ matrix.arch }}${{ matrix.ext }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bin-${{ matrix.target }}
+          path: stage
+
+      - name: Detect signing credentials
+        id: credentials
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+        run: |
+          case "${{ matrix.sign }}" in
+            macos)
+              if [ -n "$MACOS_CERTIFICATE" ] && [ -n "$MACOS_SIGNING_IDENTITY" ] && [ -n "$APPLE_NOTARY_KEY" ]; then
+                echo "macos=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "::warning::macOS signing secrets are not set; $BINARY_NAME is NOT code-signed or notarised (expected on forks)"
+              fi ;;
+            windows)
+              if [ -n "$WINDOWS_CERTIFICATE" ]; then
+                echo "windows=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "::warning::Windows signing secrets are not set; $BINARY_NAME is NOT Authenticode-signed (expected on forks)"
+              fi ;;
+          esac
+
+      - name: Sign and notarise (macOS)
+        if: steps.credentials.outputs.macos == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER }}
+        run: |
+          umask 077
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          keychain_password=$(openssl rand -base64 24)
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+
+          codesign --force --options runtime --timestamp --sign "$MACOS_SIGNING_IDENTITY" --keychain "$keychain" "stage/$BINARY_NAME"
+          codesign --verify --strict --verbose=2 "stage/$BINARY_NAME"
+
+          # A bare executable cannot be stapled; Gatekeeper checks the notarisation ticket online.
+          printf '%s' "$APPLE_NOTARY_KEY" > "$RUNNER_TEMP/notary-key.p8"
+          ditto -c -k --keepParent "stage/$BINARY_NAME" "$RUNNER_TEMP/notarise.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarise.zip" \
+            --key "$RUNNER_TEMP/notary-key.p8" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER" \
+            --wait --timeout 30m
+
+      - name: Remove macOS signing material
+        if: always() && steps.credentials.outputs.macos == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/release.keychain-db" || true
+          rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/notary-key.p8" "$RUNNER_TEMP/notarise.zip"
+
+      - name: Sign (Windows Authenticode)
+        if: steps.credentials.outputs.windows == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object { [version]($_.Directory.Parent.Name) } | Select-Object -Last 1
+          $pfx = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          try {
+            $binary = Join-Path $PWD "stage\$env:BINARY_NAME"
+            & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $binary
+            if ($LASTEXITCODE -ne 0) { throw 'signtool sign failed' }
+            & $signtool.FullName verify /pa $binary
+            if ($LASTEXITCODE -ne 0) { throw 'signtool verify failed' }
+          } finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-${{ matrix.target }}
+          path: stage/*
+          if-no-files-found: error
+
+  package:
+    name: package (${{ matrix.target }})
+    needs: [preflight, build, sign-platform]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-22.04, os_name: linux, arch: x86_64, ext: "", source: bin, run: true, archive: tar.gz }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm, os_name: linux, arch: aarch64, ext: "", source: bin, run: true, archive: tar.gz }
+          - { target: x86_64-apple-darwin, runner: macos-15-intel, os_name: macos, arch: x86_64, ext: "", source: signed, run: true, archive: tar.gz }
+          - { target: aarch64-apple-darwin, runner: macos-latest, os_name: macos, arch: aarch64, ext: "", source: signed, run: true, archive: tar.gz }
+          - { target: x86_64-pc-windows-msvc, runner: windows-latest, os_name: windows, arch: x86_64, ext: ".exe", source: signed, run: true, archive: zip }
+          - { target: aarch64-pc-windows-msvc, runner: windows-latest, os_name: windows, arch: aarch64, ext: ".exe", source: signed, run: false, archive: zip }
+    env:
+      TARGET: ${{ matrix.target }}
+      VERSION: ${{ needs.preflight.outputs.version }}
+      BINARY_NAME: inveil-${{ matrix.os_name }}-${{ matrix.arch }}${{ matrix.ext }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ matrix.source }}-${{ matrix.target }}
+          path: stage
+
+      - name: Smoke test the signed binary
+        if: matrix.run
+        run: |
+          chmod +x "stage/$BINARY_NAME"
+          output=$("./stage/$BINARY_NAME" --version)
+          echo "$output"
+          case "$output" in
+            *"$VERSION"*) ;;
+            *) echo "::error::$BINARY_NAME reports '$output', expected $VERSION"; exit 1 ;;
+          esac
+
+      - name: Package
+        run: |
+          mkdir dist
+          archive="inveil-${VERSION}-${TARGET}.${{ matrix.archive }}"
+          directory="inveil-${VERSION}-${TARGET}"
+          mkdir "$directory"
+          cp "stage/$BINARY_NAME" "$directory/inveil${{ matrix.ext }}"
+          cp LICENSE README.md "$directory/"
+          if [ "${{ matrix.archive }}" = zip ]; then
+            7z a -tzip "dist/$archive" "$directory" > /dev/null
+          else
+            tar -czf "dist/$archive" "$directory"
+          fi
+          cp "stage/$BINARY_NAME" dist/
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  seal:
+    name: SBOM, checksums, installers, unsigned manifest
+    needs: [preflight, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+      TAG: ${{ needs.preflight.outputs.tag }}
+      CHANNEL: ${{ needs.preflight.outputs.channel }}
+      MANIFEST: ${{ needs.preflight.outputs.manifest }}
+      UPDATE_PUBLIC_KEYS: ${{ vars.UPDATE_PUBLIC_KEYS }}
+      UPDATE_MANIFEST_THRESHOLD: ${{ vars.UPDATE_MANIFEST_THRESHOLD }}
+      INSTALLER_MIN_SIGNATURES: ${{ vars.INSTALLER_MIN_SIGNATURES }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-unknown-linux-gnu
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-unknown-linux-gnu
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-apple-darwin
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-apple-darwin
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-pc-windows-msvc
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-pc-windows-msvc
+          path: dist
+
+      - name: Install libdbus (needed to resolve the dependency graph)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-cyclonedx
+
+      - name: Generate SBOM
+        run: |
+          cargo cyclonedx --manifest-path crates/inveil/Cargo.toml --format json --override-filename "inveil-${VERSION}.cdx"
+          sbom=$(find . -name "inveil-${VERSION}.cdx.json" -not -path './dist/*' | head -n1)
+          if [ -z "$sbom" ]; then
+            echo "::error::cargo-cyclonedx did not produce an SBOM"
+            exit 1
+          fi
+          mv "$sbom" dist/
+
+      - name: Render install.sh and install.ps1 with the pinned keys
+        run: |
+          if [ -z "$UPDATE_PUBLIC_KEYS" ]; then
+            echo "::warning::UPDATE_PUBLIC_KEYS is not set; install.sh and install.ps1 are NOT attached to this release"
+            exit 0
+          fi
+          MIN_SIGNATURES=${INSTALLER_MIN_SIGNATURES:-2} sh .github/scripts/render-installers.sh dist
+
+      - name: SHA256SUMS (after signing)
+        working-directory: dist
+        run: |
+          chmod +x inveil-linux-* inveil-macos-*
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS' -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Generate the unsigned update manifest
+        run: |
+          mkdir manifest
+          python3 .github/scripts/update_manifest.py generate \
+            --dist dist --version "$VERSION" --tag "$TAG" --channel "$CHANNEL" \
+            --repo "$GITHUB_REPOSITORY" --threshold "${UPDATE_MANIFEST_THRESHOLD:-1}" \
+            --output "manifest/$MANIFEST"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: dist/*
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-manifest
+          path: manifest/*
+          if-no-files-found: error
+
+  sign-manifest:
+    name: sign update manifest
+    needs: [preflight, seal]
+    runs-on: ubuntu-latest
+    # Holds the update signing key and nothing else: no compiler runs here and the only code that touches the key is
+    # openssl driven by .github/scripts/sign-manifest.sh, which first validates the payload against the tag and the
+    # packaged artifacts it downloads below by exact name. Keep this environment's reviewers reading that script and
+    # this job on every change. Official releases keep only ONE update key in CI; the co-signature is added offline
+    # by a maintainer with a hardware key. UPDATE_COSIGNING_KEY exists for forks only.
+    environment: release-manifest-signing
+    permissions:
+      contents: read
+    env:
+      MANIFEST: ${{ needs.preflight.outputs.manifest }}
+      UPDATE_PUBLIC_KEYS: ${{ vars.UPDATE_PUBLIC_KEYS }}
+      UPDATE_KEY_ID: ${{ vars.UPDATE_KEY_ID }}
+      UPDATE_COSIGN_KEY_ID: ${{ vars.UPDATE_COSIGN_KEY_ID }}
+      ALLOW_UNOFFICIAL_RELEASE: ${{ vars.ALLOW_UNOFFICIAL_RELEASE }}
+      EXPECTED_TAG: ${{ needs.preflight.outputs.tag }}
+      DIST_DIR: dist
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: true
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-manifest
+          path: manifest
+
+      # The packaged binaries, by exact name, so the payload is re-hashed here instead of trusted.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-unknown-linux-gnu
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-unknown-linux-gnu
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-apple-darwin
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-apple-darwin
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-x86_64-pc-windows-msvc
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-aarch64-pc-windows-msvc
+          path: dist
+
+      - name: Sign the manifest
+        id: sign
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_COSIGNING_KEY: ${{ secrets.UPDATE_COSIGNING_KEY }}
+        run: |
+          if [ -z "$UPDATE_SIGNING_KEY" ] || [ -z "$UPDATE_KEY_ID" ]; then
+            if [ "$ALLOW_UNOFFICIAL_RELEASE" = true ]; then
+              echo "::warning::UPDATE_SIGNING_KEY or UPDATE_KEY_ID is not set; the update manifest is NOT signed (ALLOW_UNOFFICIAL_RELEASE=true)"
+              exit 0
+            fi
+            echo "::error::UPDATE_SIGNING_KEY secret and UPDATE_KEY_ID variable are required for a release"
+            exit 1
+          fi
+          keys="$UPDATE_KEY_ID:UPDATE_SIGNING_KEY"
+          if [ "$ALLOW_UNOFFICIAL_RELEASE" = true ] && [ -n "$UPDATE_COSIGNING_KEY" ] && [ -n "$UPDATE_COSIGN_KEY_ID" ]; then
+            keys="$keys $UPDATE_COSIGN_KEY_ID:UPDATE_COSIGNING_KEY"
+          elif [ -n "$UPDATE_COSIGNING_KEY" ]; then
+            echo "::error::UPDATE_COSIGNING_KEY is set in the release-manifest-signing environment. An official release must not hold both update keys in CI; remove it. The co-signature is added offline by a maintainer."
+            exit 1
+          else
+            echo "::notice::One update key signed. A maintainer must add the second signature offline with 'inveil sign --role update --co-sign' before publishing."
+          fi
+          mkdir signature
+          # shellcheck disable=SC2086
+          sh .github/scripts/sign-manifest.sh "manifest/$MANIFEST" "signature/$MANIFEST.sig" $keys
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.sign.outputs.signed == 'true'
+        with:
+          name: release-assets-signature
+          path: signature/*
+          if-no-files-found: error
+
+  attest:
+    name: Build provenance
+    needs: [seal, sign-manifest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: ${{ vars.ALLOW_UNOFFICIAL_RELEASE == 'true' }}
+        with:
+          name: release-assets-signature
+          path: dist
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
+  draft-release:
+    name: Create draft release
+    needs: [preflight, attest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.preflight.outputs.tag }}
+      PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: ${{ vars.ALLOW_UNOFFICIAL_RELEASE == 'true' }}
+        with:
+          name: release-assets-signature
+          path: dist
+      - name: Create draft
+        id: create
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "inveil $TAG" --generate-notes "${flags[@]}"
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" \
+            --jq "[.[] | select(.draft and .tag_name == \"$TAG\")][0].id")
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Draft release $TAG is ready"
+            echo
+            echo "1. The verify-download jobs check hashes and run the binary. Their last step fails on purpose until the manifest has its full threshold."
+            echo "2. Add the maintainer co-signature OFFLINE with the hardware key, after verifying the binary hashes independently"
+            echo "   (reproducible build or \`gh attestation verify\`, never by trusting this run): download \`update-manifest*.json.sig\`,"
+            echo "   run \`inveil sign --role update --co-sign\`, and upload it with \`gh release upload --clobber\`."
+            echo "3. Publish the draft, then run the \"Verify published release\" workflow with this tag. If it fails, turn the release back into a draft at once."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  fetch-draft:
+    name: fetch draft assets
+    needs: [preflight, draft-release]
+    runs-on: ubuntu-latest
+    # The only job after the release exists that holds a token. It downloads and uploads files; it never runs them.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_ID: ${{ needs.draft-release.outputs.release_id }}
+    steps:
+      - name: Download every release asset
+        run: |
+          mkdir dl
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.assets[] | "\(.id) \(.name)"' |
+            while read -r asset_id asset_name; do
+              gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "dl/$asset_name"
+            done
+          ls -l dl
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: draft-assets
+          path: dl/*
+          if-no-files-found: error
+
+  verify-download:
+    name: verify download (${{ matrix.os_name }}-${{ matrix.arch }})
+    needs: [preflight, fetch-draft]
+    runs-on: ${{ matrix.runner }}
+    # No token and no secret: this job executes the downloaded binary.
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04, os_name: linux, arch: x86_64, ext: "" }
+          - { runner: ubuntu-22.04-arm, os_name: linux, arch: aarch64, ext: "" }
+          - { runner: macos-15-intel, os_name: macos, arch: x86_64, ext: "" }
+          - { runner: macos-latest, os_name: macos, arch: aarch64, ext: "" }
+          - { runner: windows-latest, os_name: windows, arch: x86_64, ext: ".exe" }
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+      CHANNEL: ${{ needs.preflight.outputs.channel }}
+      MANIFEST: ${{ needs.preflight.outputs.manifest }}
+      BINARY_NAME: inveil-${{ matrix.os_name }}-${{ matrix.arch }}${{ matrix.ext }}
+      UPDATE_PUBLIC_KEYS: ${{ vars.UPDATE_PUBLIC_KEYS }}
+      ALLOW_UNOFFICIAL_RELEASE: ${{ vars.ALLOW_UNOFFICIAL_RELEASE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: draft-assets
+          path: dl
+
+      - name: Check SHA256SUMS
+        working-directory: dl
+        run: |
+          if command -v sha256sum > /dev/null; then
+            sha256sum -c SHA256SUMS
+          else
+            shasum -a 256 -c SHA256SUMS
+          fi
+
+      - name: Verify the signed manifest
+        id: verify
+        run: |
+          chmod +x "dl/$BINARY_NAME"
+          if [ ! -f "dl/$MANIFEST.sig" ]; then
+            if [ "$ALLOW_UNOFFICIAL_RELEASE" = true ]; then
+              echo "::warning::no $MANIFEST.sig in the release (unsigned fork build, ALLOW_UNOFFICIAL_RELEASE=true); manifest verification and the install test do not run"
+              exit 0
+            fi
+            echo "::error::no $MANIFEST.sig in the release"
+            exit 1
+          fi
+          .github/scripts/verify-manifest.sh "dl/$BINARY_NAME" dl "$VERSION" "dl/$MANIFEST.sig"
+
+      - name: Run install.sh end to end (macOS and Linux)
+        if: runner.os != 'Windows' && steps.verify.outputs.verified == 'true'
+        run: |
+          extra=""
+          if [ "$CHANNEL" = beta ]; then extra="--channel beta --version $VERSION"; fi
+          install_dir=$(mktemp -d)/bin
+          # shellcheck disable=SC2086
+          INVEIL_INSTALL_TESTING=1 INVEIL_INSTALL_BASE_URL="file://$PWD/dl" INVEIL_INSTALL_DIR="$install_dir" \
+            sh dl/install.sh --no-enroll $extra
+          "$install_dir/inveil" --version
+
+      - name: Run install.ps1 end to end (Windows)
+        if: runner.os == 'Windows' && steps.verify.outputs.verified == 'true'
+        shell: pwsh
+        run: |
+          $env:INVEIL_INSTALL_TESTING = '1'
+          $env:INVEIL_INSTALL_BASE_URL = ([Uri]('file:///' + ((Resolve-Path dl).Path -replace '\\', '/'))).AbsoluteUri
+          $env:INVEIL_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'inveil-install'
+          $arguments = @('-NoEnroll')
+          if ($env:CHANNEL -eq 'beta') { $arguments += @('-Channel', 'beta', '-Version', $env:VERSION) }
+          & ./dl/install.ps1 @arguments
+          if (-not $?) { exit 1 }
+
+      - name: Run the downloaded binary
+        run: |
+          output=$("./dl/$BINARY_NAME" --version)
+          echo "$output"
+          case "$output" in
+            *"$VERSION"*) ;;
+            *) echo "::error::reports '$output', expected $VERSION"; exit 1 ;;
+          esac
+
+      # The install test above only runs once the manifest meets its full threshold, because the installer enforces
+      # it. A draft that still awaits the maintainer co-signature therefore cannot pass here; fail loudly instead of
+      # skipping, so a green run always means "installed end to end with the full threshold". After co-signing, run
+      # verify-published-release.yml. Forks that opted out with ALLOW_UNOFFICIAL_RELEASE=true only get a warning.
+      - name: Require the full signature threshold (fails on a draft awaiting the co-signature)
+        if: ${{ !cancelled() && steps.verify.outputs.verified != 'true' }}
+        run: |
+          if [ "$ALLOW_UNOFFICIAL_RELEASE" = true ]; then
+            echo "::warning::the install test did not run: the manifest does not meet its signature threshold (ALLOW_UNOFFICIAL_RELEASE=true)"
+            exit 0
+          fi
+          echo "::error::The install test did NOT run because the manifest does not yet carry its full signature threshold. This is expected for a fresh draft: add the offline co-signature, upload it, then run the verify-published-release workflow. Do not publish before that passes."
+          exit 1

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SignedEnvelope",
+  "description": "A payload string plus the signatures over it. The payload stays a string so the signed bytes are never re-encoded.",
+  "type": "object",
+  "properties": {
+    "payload": {
+      "type": "string"
+    },
+    "signatures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SignatureEntry"
+      }
+    },
+    "delegation": {
+      "description": "Hosted mode: a root-signed certificate for the key that signed `payload`.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Delegation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "payload",
+    "signatures"
+  ],
+  "$defs": {
+    "SignatureEntry": {
+      "type": "object",
+      "properties": {
+        "key_id": {
+          "type": "string"
+        },
+        "signature": {
+          "description": "Base64 Ed25519 signature.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key_id",
+        "signature"
+      ]
+    },
+    "Delegation": {
+      "description": "Lets an offline root key authorise a short-lived signing key without the client being re-pinned.",
+      "type": "object",
+      "properties": {
+        "key_id": {
+          "type": "string"
+        },
+        "public_key": {
+          "description": "Base64 Ed25519 public key being delegated.",
+          "type": "string"
+        },
+        "not_before": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "not_after": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "audience": {
+          "description": "When set, the delegated key may only sign snapshots for this audience.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "root_key_id": {
+          "type": "string"
+        },
+        "signature": {
+          "description": "Base64 root signature over the canonical delegation fields.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key_id",
+        "public_key",
+        "not_before",
+        "not_after",
+        "root_key_id",
+        "signature"
+      ]
+    }
+  }
+}

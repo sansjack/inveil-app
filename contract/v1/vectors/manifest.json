@@ -1,0 +1,203 @@
+{
+  "format": 1,
+  "description": "Signed envelopes and the outcome every verifier must reach. The keys are test keys derived from public seeds.",
+  "now": 1700000100,
+  "high_water_version": 7,
+  "domains": {
+    "delegation": "inveil-delegation-v2\\0",
+    "policy": "inveil-policy-v1\\0",
+    "update": "inveil-update-v1\\0"
+  },
+  "keys": [
+    {
+      "key_id": "policy-1",
+      "role": "policy",
+      "public_key": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w="
+    },
+    {
+      "key_id": "policy-2",
+      "role": "policy",
+      "public_key": "gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q="
+    },
+    {
+      "key_id": "update-1",
+      "role": "update",
+      "public_key": "7UkoxijRwsbq6QM4kFmVYSlZJzpcY/k2NsFGFKyHN9E="
+    },
+    {
+      "key_id": "update-2",
+      "role": "update",
+      "public_key": "ypOsFwUYcHHWe4PH/w7+gQjo7EUwV113JoeTM9vavnw="
+    }
+  ],
+  "vectors": [
+    {
+      "file": "policy-good.json",
+      "description": "A snapshot signed by a pinned policy key.",
+      "role": "policy",
+      "threshold": 1,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "valid",
+      "client_outcome": "accept"
+    },
+    {
+      "file": "policy-good-two-signatures.json",
+      "description": "Signed by two distinct pinned keys; passes a threshold of 2.",
+      "role": "policy",
+      "threshold": 2,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "valid",
+      "client_outcome": "accept"
+    },
+    {
+      "file": "policy-below-threshold.json",
+      "description": "One valid signature where the verifier requires two.",
+      "role": "policy",
+      "threshold": 2,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "invalid",
+      "client_outcome": "reject_signature"
+    },
+    {
+      "file": "policy-tampered-payload.json",
+      "description": "The payload was edited after signing (version 7 became 8).",
+      "role": "policy",
+      "threshold": 1,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "invalid",
+      "client_outcome": "reject_signature"
+    },
+    {
+      "file": "policy-tampered-signature.json",
+      "description": "One bit of the signature was flipped.",
+      "role": "policy",
+      "threshold": 1,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "invalid",
+      "client_outcome": "reject_signature"
+    },
+    {
+      "file": "policy-wrong-key.json",
+      "description": "Signed by an unpinned key that claims the id of a pinned one.",
+      "role": "policy",
+      "threshold": 1,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "invalid",
+      "client_outcome": "reject_signature"
+    },
+    {
+      "file": "policy-unknown-key-id.json",
+      "description": "Signed by a key whose id is not pinned.",
+      "role": "policy",
+      "threshold": 1,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "invalid",
+      "client_outcome": "reject_signature"
+    },
+    {
+      "file": "policy-wrong-role.json",
+      "description": "A pinned policy key signed under the update domain; it must not verify as a policy.",
+      "role": "policy",
+      "threshold": 1,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "invalid",
+      "client_outcome": "reject_signature"
+    },
+    {
+      "file": "policy-expired.json",
+      "description": "Validly signed, but expires_at is before the evaluation time.",
+      "role": "policy",
+      "threshold": 1,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "valid",
+      "client_outcome": "reject_expired"
+    },
+    {
+      "file": "policy-lower-version.json",
+      "description": "Validly signed, but its version is below the client's high-water mark (rollback).",
+      "role": "policy",
+      "threshold": 1,
+      "trusted_key_ids": [
+        "policy-1",
+        "policy-2"
+      ],
+      "signature": "valid",
+      "client_outcome": "reject_rollback"
+    },
+    {
+      "file": "update-good.json",
+      "description": "An update manifest signed by two distinct pinned update keys.",
+      "role": "update",
+      "threshold": 2,
+      "trusted_key_ids": [
+        "update-1",
+        "update-2"
+      ],
+      "signature": "valid",
+      "client_outcome": "accept"
+    },
+    {
+      "file": "update-one-signature.json",
+      "description": "A manifest that needs two signers carries only one.",
+      "role": "update",
+      "threshold": 2,
+      "trusted_key_ids": [
+        "update-1",
+        "update-2"
+      ],
+      "signature": "invalid",
+      "client_outcome": "reject_signature"
+    },
+    {
+      "file": "update-tampered.json",
+      "description": "The artifact size was edited after signing.",
+      "role": "update",
+      "threshold": 2,
+      "trusted_key_ids": [
+        "update-1",
+        "update-2"
+      ],
+      "signature": "invalid",
+      "client_outcome": "reject_signature"
+    },
+    {
+      "file": "update-wrong-role.json",
+      "description": "Update keys signed under the policy domain; it must not verify as an update.",
+      "role": "update",
+      "threshold": 2,
+      "trusted_key_ids": [
+        "update-1",
+        "update-2"
+      ],
+      "signature": "invalid",
+      "client_outcome": "reject_signature"
+    }
+  ]
+}

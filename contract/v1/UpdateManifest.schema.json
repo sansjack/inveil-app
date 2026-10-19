@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UpdateManifest",
+  "description": "The payload of a signed update manifest.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "format": "uint8",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "channel": {
+      "type": "string"
+    },
+    "version": {
+      "description": "Semantic version of the release.",
+      "type": "string"
+    },
+    "published_at": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "expires_at": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "min_supported": {
+      "description": "Versions below this must update before anything else.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "threshold": {
+      "description": "Distinct pinned update keys that must have signed this manifest.",
+      "type": "integer",
+      "format": "uint8",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "artifacts": {
+      "description": "Keyed by `<os>-<arch>`, e.g. `macos-aarch64`, `windows-x86_64`, `linux-x86_64`.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Artifact"
+      }
+    },
+    "notes_url": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "revoked_key_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "channel",
+    "version",
+    "published_at",
+    "expires_at",
+    "threshold",
+    "artifacts"
+  ],
+  "$defs": {
+    "Artifact": {
+      "description": "A raw binary for one target. Archives are never referenced: the updater parses no container formats.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "sha256": {
+          "description": "Lower-case hex SHA-256 of the binary.",
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "sha256",
+        "size"
+      ]
+    }
+  }
+}

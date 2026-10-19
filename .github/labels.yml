@@ -1,0 +1,49 @@
+# Source of truth for repository labels. Apply with a label-sync tool or `gh label create --force`.
+- name: bug
+  color: d73a4a
+  description: Something is not working
+- name: enhancement
+  color: a2eeef
+  description: New feature or request
+- name: security
+  color: b60205
+  description: Security-relevant change (report vulnerabilities privately, not here)
+- name: dependencies
+  color: 0366d6
+  description: Dependency updates
+- name: ci
+  color: ededed
+  description: CI and release workflows
+- name: docs
+  color: 0075ca
+  description: Documentation
+- name: contract
+  color: 5319e7
+  description: Backend contract (schemas, vectors, endpoints)
+- name: detector
+  color: 1d76db
+  description: PII detectors and rules
+- name: updater
+  color: fbca04
+  description: Signed update and install flow
+- name: platform:macos
+  color: c5def5
+  description: macOS specific
+- name: platform:linux
+  color: c5def5
+  description: Linux specific
+- name: platform:windows
+  color: c5def5
+  description: Windows specific
+- name: good first issue
+  color: 7057ff
+  description: Good for newcomers
+- name: help wanted
+  color: 008672
+  description: Extra attention is needed
+- name: needs-triage
+  color: ffffff
+  description: Not yet reviewed by a maintainer
+- name: wontfix
+  color: ffffff
+  description: This will not be worked on

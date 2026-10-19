@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="440" viewBox="0 0 1000 440" role="img" aria-label="Trust model: three Ed25519 key roles with separate signing domains. The update key signs update manifests, the policy key signs rules snapshots, and an optional offline root key certifies short-lived policy keys. The hosting server holds none of them except a delegated, short-lived policy key in hosted mode.">
+  <title>Inveil trust model</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#a3a3a3"/>
+    </marker>
+    <style>
+      text { font-family: Inter, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #fafafa; }
+      .title { font-size: 15px; font-weight: 600; }
+      .small { font-size: 12.5px; fill: #a3a3a3; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; fill: #fafafa; }
+      .box { fill: #171717; stroke: #404040; stroke-width: 1.2; }
+      .key { fill: #171717; stroke: #10b981; stroke-width: 1.4; }
+      .untrusted { fill: #0a0a0a; stroke: #f59e0b; stroke-width: 1.4; stroke-dasharray: 5 4; }
+      .line { stroke: #a3a3a3; stroke-width: 1.4; fill: none; }
+    </style>
+  </defs>
+  <rect width="1000" height="440" rx="14" fill="#0a0a0a"/>
+
+  <text x="40" y="36" class="title">Who signs what</text>
+
+  <rect x="32" y="56" width="280" height="128" rx="10" class="key"/>
+  <text x="48" y="84" class="title">update key(s)</text>
+  <text x="48" y="106" class="mono">inveil-update-v1\0</text>
+  <text x="48" y="130" class="small">CI protected environment, KMS or</text>
+  <text x="48" y="148" class="small">hardware key. Never on the web host.</text>
+  <text x="48" y="168" class="small">Threshold: 1 default, 2 for releases.</text>
+
+  <rect x="360" y="56" width="280" height="128" rx="10" class="key"/>
+  <text x="376" y="84" class="title">policy key</text>
+  <text x="376" y="106" class="mono">inveil-policy-v1\0</text>
+  <text x="376" y="130" class="small">Self-host: held by the admin.</text>
+  <text x="376" y="148" class="small">Hosted: short-lived, delegated, in KMS.</text>
+  <text x="376" y="168" class="small">Can change policy, cannot ship code.</text>
+
+  <rect x="688" y="56" width="280" height="128" rx="10" class="key"/>
+  <text x="704" y="84" class="title">root key (optional)</text>
+  <text x="704" y="106" class="mono">inveil-delegation-v2\0</text>
+  <text x="704" y="130" class="small">Offline. Certifies policy keys with a</text>
+  <text x="704" y="148" class="small">validity window and audience, so keys</text>
+  <text x="704" y="168" class="small">rotate without re-pinning clients.</text>
+  <path d="M688 120H644" class="line" marker-end="url(#arrow)"/>
+  <text x="666" y="110" text-anchor="middle" class="small">certifies</text>
+
+  <path d="M172 184V236" class="line" marker-end="url(#arrow)"/>
+  <path d="M500 184V236" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="32" y="240" width="280" height="64" rx="10" class="box"/>
+  <text x="48" y="266" class="title">update manifest</text>
+  <text x="48" y="286" class="small">binary URLs, SHA-256, size, version</text>
+  <rect x="360" y="240" width="280" height="64" rx="10" class="box"/>
+  <text x="376" y="266" class="title">rules snapshot</text>
+  <text x="376" y="286" class="small">rules, tools, settings, audience</text>
+
+  <path d="M172 304V340" class="line" marker-end="url(#arrow)"/>
+  <path d="M500 304V340" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="32" y="344" width="608" height="68" rx="10" class="untrusted"/>
+  <text x="336" y="372" text-anchor="middle" class="title">Untrusted for integrity: backend, CDN, GitHub, web host</text>
+  <text x="336" y="394" text-anchor="middle" class="small">They only carry signed bytes. A compromise yields zero valid signatures.</text>
+
+  <rect x="688" y="240" width="280" height="172" rx="10" class="box"/>
+  <text x="704" y="268" class="title">Client</text>
+  <text x="704" y="292" class="small">Trusts only keys pinned in local config.</text>
+  <text x="704" y="316" class="small">Verifies signature before parsing.</text>
+  <text x="704" y="340" class="small">Rejects: unknown schema, wrong role,</text>
+  <text x="704" y="358" class="small">lower version, expired, wrong audience.</text>
+  <text x="704" y="382" class="small">Settings can only tighten, never loosen.</text>
+  <path d="M640 276H684" class="line" marker-end="url(#arrow)"/>
+</svg>

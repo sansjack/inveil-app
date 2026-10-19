@@ -1,0 +1,13 @@
+{
+  "payload": "{\"schema\":1,\"channel\":\"stable\",\"version\":\"1.2.3\",\"published_at\":1700000000,\"expires_at\":1700086400,\"min_supported\":null,\"threshold\":2,\"artifacts\":{\"linux-x86_64\":{\"url\":\"https://example.com/releases/inveil-1.2.3-linux-x86_64\",\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"size\":1024}},\"notes_url\":null,\"revoked_key_ids\":[]}",
+  "signatures": [
+    {
+      "key_id": "update-1",
+      "signature": "wTxaSEFVYMJCFVLszaSTBksDSsy+UJ4iw7RwGADr5RYdrsKPI+Ns7VAhViakbDBzrZ8vNIhNjW2Ui/fwnGHTCg=="
+    },
+    {
+      "key_id": "update-2",
+      "signature": "vgo8qxOnem+RI7j0mNewEovqbf+ybvEr32BxjpByni6w1fr6V4Nso5W2ZRd/vDsI03Blr8ragNF7DsPO/jWFBA=="
+    }
+  ]
+}

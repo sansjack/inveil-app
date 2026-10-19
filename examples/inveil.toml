@@ -1,0 +1,138 @@
+# Annotated example for inveil.toml. Every key below is the default unless a comment says otherwise.
+# Layering, highest first: command-line flags, INVEIL_* environment variables, this file, built-in defaults.
+# Unknown keys are rejected at startup, so a typo fails loudly.
+# See docs/CONFIGURATION.md for which settings the backend can enforce.
+
+# "standalone": you are both administrator and user; every setting is local.
+# "managed": an administrator owns the policy. The signed rules decide usage reporting and the settings the
+# backend enforces. Put this file in the system-wide location so standard users cannot edit it.
+mode = "standalone"
+
+# No network at all: no backend, no usage, no update checks. In managed mode this is honoured only when the
+# signed settings set allow_offline.
+offline = false
+
+# A locally supplied signed rules file, used instead of the backend (air-gapped and standalone setups).
+# rules_file = "/path/to/rules.signed.json"
+
+# Default upstream for the localhost API proxy. When the backend sets allowed_upstreams, this must be on the list.
+upstream = "https://api.anthropic.com"
+
+# Log what would be blocked or redacted, but forward the request unchanged. A backend that sets dry_run = false
+# overrides this.
+dry_run = false
+
+# Legacy alias for [failure_modes] unscannable: true is "closed", false is "open" (standalone mode only).
+# Unset: requests the proxy cannot scan are blocked unless the signed policy says "open".
+# block_unscannable = true
+
+# Extra regular expressions to block on top of the signed rules. Added to the backend's deny list, never replacing it.
+deny = []
+
+# Maximum estimated tokens per request. 0 means no local limit.
+max_tokens = 0
+
+# Legacy alias for [failure_modes] service_down: true is "closed" (browsers stop loading chat sites while inveil is
+# down), false is "open" (they go direct).
+# browser_fail_closed = true
+
+# What to do when inveil cannot make a normal decision. "open" lets the traffic through and audits it as fail_open;
+# "closed" blocks it. In standalone mode you may choose either, for conditions the signed policy does not set. In
+# managed mode only "closed" is accepted; "open" has to come from the signed policy. Unset conditions follow the
+# signed policy, then the built-in modes: closed for unscannable, scan_error and policy_expired, open for
+# service_down. "closed" always wins over a signed "open".
+# [failure_modes]
+# default = "closed"
+# unscannable = "closed"
+# scan_error = "closed"
+# policy_expired = "closed"
+# service_down = "closed"
+
+# Desktop notification when a request is blocked or redacted.
+notify = true
+
+# Overrides the per-user data directory (state, CA, cache, logs).
+# data_dir = "/path/to/data"
+
+[backend]
+# Backend base URL. Must be https, or loopback, or allow_insecure_http = true.
+# With no url the client runs offline with the built-in rules and says so.
+# url = "https://backend.example.com"
+rules_path = "/v1/rules"
+enroll_path = "/v1/enroll"
+# How often to poll for new rules. A backend may raise this with min_poll_seconds, never lower it.
+poll_minutes = 30
+# Plain http:// is refused unless this is true (loopback is always allowed).
+allow_insecure_http = false
+
+# Public keys allowed to sign rules. The trust root comes from here, never from the backend.
+# key_id values let you rotate keys: list the old and new key while you switch.
+# [[backend.pinned_keys]]
+# key_id = "policy-1"
+# public_key = "BASE64_ED25519_PUBLIC_KEY"
+
+# Offline keys that may certify short-lived policy signing keys (hosted setups only).
+# [[backend.root_keys]]
+# key_id = "root-1"
+# public_key = "BASE64_ED25519_PUBLIC_KEY"
+
+[auth]
+# "none": no credential is sent.
+# "static_token": a fixed bearer token read from token_env, or from the OS keychain when token_env is unset.
+# "enrolled": a device credential obtained with `inveil enroll`.
+# "device_flow": OAuth device flow against paths on the backend (below).
+mode = "none"
+# token_env = "INVEIL_TOKEN"
+
+[auth.device_flow]
+client_id = "inveil-client"
+code_path = "/api/auth/device/code"
+token_path = "/api/auth/device/token"
+session_path = "/api/auth/get-session"
+jwt_path = "/api/auth/token"
+
+[listen]
+# Localhost API proxy. It also serves /proxy.pac and GET /health.
+port = 8787
+# Localhost browser (MITM) proxy. The PAC file points browsers here but is served on `port`.
+browser_port = 8788
+
+[limits]
+# Largest request body read for scanning, and the largest a compressed body may expand to. Anything bigger is
+# blocked as unscannable (or passed and audited when failure_modes.unscannable is "open").
+max_body_bytes = 33554432
+max_decoded_bytes = 67108864
+
+[usage]
+# "none": nothing is sent or written.
+# "file": append metadata-only JSON lines to `file`.
+# "http": POST batches to the backend at `path`.
+# In managed mode the signed settings.usage_reporting can require or forbid reporting.
+sink = "none"
+path = "/v1/usage"
+# file = "/path/to/usage.jsonl"
+
+[logging]
+# Log filter, for example "info" or "debug". Unset uses the default.
+# level = "info"
+# Metadata-only diagnostics. Never request content. A backend may forbid these with allow_debug = false.
+debug = false
+trace = false
+# file = "/path/to/inveil.log"
+# Separate JSONL stream of block and redact decisions.
+# audit_file = "/path/to/audit.jsonl"
+
+[update]
+# "off": never check. "notify": check and tell you (default). "download": also download and verify.
+# "install": also apply, with automatic rollback.
+mode = "notify"
+# Signed update envelope (https, the .json.sig file). Required for any mode but "off"; forks and self-hosters set
+# their own feed plus pinned_keys.
+# feed_url = "https://updates.example.com/update-manifest.json.sig"
+channel = "stable"
+check_hours = 24
+
+# Keys allowed to sign update manifests.
+# [[update.pinned_keys]]
+# key_id = "update-1"
+# public_key = "BASE64_ED25519_PUBLIC_KEY"

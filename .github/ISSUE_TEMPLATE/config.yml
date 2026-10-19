@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/sansjack/inveil-app/security/advisories/new
+    about: Do not open a public issue. Use private vulnerability reporting; see SECURITY.md.
+  - name: Questions and support
+    url: https://github.com/sansjack/inveil-app/discussions
+    about: Ask usage questions here; see SUPPORT.md.

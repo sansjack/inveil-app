@@ -1,0 +1,337 @@
+{
+  "schema": 1,
+  "version": 1,
+  "issued_at": 1767225600,
+  "expires_at": 1801785600,
+  "pii": [
+    {
+      "id": "card",
+      "label": "Credit card number",
+      "pattern": "\\b(?:\\d[ -]?){13,19}\\b",
+      "validator": "luhn",
+      "action": "block",
+      "enabled": true
+    },
+    {
+      "id": "ssn",
+      "label": "US Social Security number",
+      "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+      "validator": "ssn",
+      "action": "block",
+      "enabled": true
+    },
+    {
+      "id": "iban",
+      "label": "IBAN",
+      "pattern": "\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b",
+      "validator": "iban",
+      "action": "block",
+      "enabled": true
+    },
+    {
+      "id": "email",
+      "label": "Email address",
+      "pattern": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+      "validator": null,
+      "action": "log",
+      "enabled": true
+    },
+    {
+      "id": "phone",
+      "label": "Phone number",
+      "pattern": "\\+\\d{1,3}[ -]?\\(?\\d{2,4}\\)?[ -]?\\d{3,4}[ -]?\\d{3,4}\\b",
+      "validator": null,
+      "action": "log",
+      "enabled": true
+    },
+    {
+      "id": "aws_key",
+      "label": "AWS access key",
+      "pattern": "\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b",
+      "validator": null,
+      "action": "block",
+      "enabled": true
+    },
+    {
+      "id": "api_key",
+      "label": "API key",
+      "pattern": "\\bsk-[A-Za-z0-9_-]{20,}",
+      "validator": null,
+      "action": "block",
+      "enabled": true
+    },
+    {
+      "id": "github_token",
+      "label": "GitHub token",
+      "pattern": "\\bgh[pousr]_[A-Za-z0-9]{36,}",
+      "validator": null,
+      "action": "block",
+      "enabled": true
+    },
+    {
+      "id": "slack_token",
+      "label": "Slack token",
+      "pattern": "\\bxox[baprs]-[A-Za-z0-9-]{10,}",
+      "validator": null,
+      "action": "block",
+      "enabled": true
+    },
+    {
+      "id": "google_key",
+      "label": "Google API key",
+      "pattern": "\\bAIza[0-9A-Za-z_-]{35}",
+      "validator": null,
+      "action": "block",
+      "enabled": true
+    },
+    {
+      "id": "private_key",
+      "label": "Private key",
+      "pattern": "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+      "validator": null,
+      "action": "block",
+      "enabled": true
+    },
+    {
+      "id": "jwt",
+      "label": "JSON web token",
+      "pattern": "\\beyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]+",
+      "validator": null,
+      "action": "block",
+      "enabled": true
+    }
+  ],
+  "tools": [
+    {
+      "id": "claude-code",
+      "name": "Claude Code / Claude Desktop",
+      "via": "local",
+      "enabled": true,
+      "upstream": "https://api.anthropic.com",
+      "prefix": null,
+      "env_var": "ANTHROPIC_BASE_URL",
+      "endpoints": [
+        {
+          "path": "/v1/messages",
+          "match": "exact",
+          "format": "json"
+        }
+      ],
+      "hosts": []
+    },
+    {
+      "id": "claude-web",
+      "name": "Claude (browser)",
+      "via": "browser",
+      "enabled": true,
+      "upstream": null,
+      "prefix": null,
+      "endpoints": [],
+      "hosts": [
+        {
+          "host": "claude.ai",
+          "endpoints": [
+            {
+              "path": "/claudeai-rpc/anthropic.bard.api.v1alpha.ConversationService/PerformAction",
+              "match": "exact",
+              "format": "protobuf"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chatgpt-web",
+      "name": "ChatGPT (browser / desktop app)",
+      "via": "browser",
+      "enabled": true,
+      "upstream": null,
+      "prefix": null,
+      "endpoints": [],
+      "hosts": [
+        {
+          "host": "chatgpt.com",
+          "endpoints": [
+            {
+              "path": "/backend-api/f/conversation",
+              "match": "exact",
+              "format": "json"
+            },
+            {
+              "path": "/backend-api/conversation",
+              "match": "exact",
+              "format": "json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex",
+      "name": "Codex (ChatGPT login)",
+      "via": "browser",
+      "enabled": true,
+      "upstream": null,
+      "prefix": null,
+      "endpoints": [],
+      "hosts": [
+        {
+          "host": "chatgpt.com",
+          "endpoints": [
+            {
+              "path": "/backend-api/codex/responses",
+              "match": "exact",
+              "format": "websocket-json"
+            },
+            {
+              "path": "/backend-api/codex/responses",
+              "match": "exact",
+              "format": "json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-api",
+      "name": "Codex / OpenAI API key",
+      "via": "local",
+      "enabled": true,
+      "upstream": "https://api.openai.com",
+      "prefix": "/openai",
+      "endpoints": [
+        {
+          "path": "/v1/responses",
+          "match": "exact",
+          "format": "json"
+        },
+        {
+          "path": "/v1/chat/completions",
+          "match": "exact",
+          "format": "json"
+        }
+      ],
+      "hosts": [],
+      "env_var": "OPENAI_BASE_URL"
+    },
+    {
+      "id": "gemini-web",
+      "name": "Gemini (browser)",
+      "via": "browser",
+      "enabled": true,
+      "upstream": null,
+      "prefix": null,
+      "endpoints": [],
+      "hosts": [
+        {
+          "host": "gemini.google.com",
+          "endpoints": [
+            {
+              "path": "/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate",
+              "match": "exact",
+              "format": "form"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemini-cli",
+      "name": "Gemini CLI / Gemini API",
+      "via": "local",
+      "enabled": true,
+      "upstream": "https://generativelanguage.googleapis.com",
+      "prefix": "/google",
+      "endpoints": [
+        {
+          "path": "/v1beta/models/",
+          "match": "prefix",
+          "format": "json"
+        },
+        {
+          "path": "/v1/models/",
+          "match": "prefix",
+          "format": "json"
+        }
+      ],
+      "hosts": [],
+      "env_var": "GOOGLE_GEMINI_BASE_URL"
+    },
+    {
+      "id": "grok-web",
+      "name": "Grok (browser)",
+      "via": "browser",
+      "enabled": true,
+      "upstream": null,
+      "prefix": null,
+      "endpoints": [],
+      "hosts": [
+        {
+          "host": "grok.com",
+          "endpoints": [
+            {
+              "path": "/rest/app-chat/",
+              "match": "prefix",
+              "format": "json"
+            },
+            {
+              "path": "/",
+              "match": "prefix",
+              "format": "websocket-json"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "xai-api",
+      "name": "Grok / xAI API",
+      "via": "local",
+      "enabled": true,
+      "upstream": "https://api.x.ai",
+      "prefix": "/xai",
+      "endpoints": [
+        {
+          "path": "/v1/chat/completions",
+          "match": "exact",
+          "format": "json"
+        },
+        {
+          "path": "/v1/responses",
+          "match": "exact",
+          "format": "json"
+        }
+      ],
+      "hosts": []
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor Agent (CLI)",
+      "via": "browser",
+      "enabled": true,
+      "upstream": null,
+      "prefix": null,
+      "endpoints": [],
+      "hosts": [
+        {
+          "host": "agentn.global.api5.cursor.sh",
+          "endpoints": [
+            {
+              "path": "/agent.v1.AgentService/Run",
+              "match": "exact",
+              "format": "connect-stream"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "ca_domains": [
+    "chatgpt.com",
+    "claude.ai",
+    "cursor.sh",
+    "gemini.google.com",
+    "grok.com"
+  ],
+  "settings": {}
+}

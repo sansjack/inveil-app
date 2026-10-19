@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="460" viewBox="0 0 1000 460" role="img" aria-label="Architecture: an AI tool sends requests to the local Inveil proxy, which decodes, detects and decides before forwarding to the provider. The backend supplies signed rules and optionally receives usage metadata.">
+  <title>Inveil architecture</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#a3a3a3"/>
+    </marker>
+    <style>
+      text { font-family: Inter, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #fafafa; }
+      .title { font-size: 15px; font-weight: 600; }
+      .small { font-size: 12.5px; fill: #a3a3a3; }
+      .box { fill: #171717; stroke: #404040; stroke-width: 1.2; }
+      .proxy { fill: #171717; stroke: #737373; stroke-width: 1.5; }
+      .safe { stroke: #10b981; fill: #0a0a0a; stroke-width: 1.2; }
+      .blocked { stroke: #f59e0b; fill: #0a0a0a; stroke-width: 1.2; }
+      .line { stroke: #a3a3a3; stroke-width: 1.4; fill: none; }
+      .dash { stroke: #a3a3a3; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+    </style>
+  </defs>
+  <rect width="1000" height="460" rx="14" fill="#0a0a0a"/>
+
+  <text x="40" y="38" class="small">Your machine</text>
+  <rect x="24" y="52" width="652" height="384" rx="12" fill="none" stroke="#404040" stroke-dasharray="4 4"/>
+
+  <rect x="48" y="170" width="150" height="76" rx="10" class="box"/>
+  <text x="123" y="203" text-anchor="middle" class="title">AI tool</text>
+  <text x="123" y="224" text-anchor="middle" class="small">CLI, IDE, browser</text>
+
+  <rect x="262" y="96" width="250" height="228" rx="12" class="proxy"/>
+  <text x="387" y="126" text-anchor="middle" class="title">Inveil proxy</text>
+  <text x="387" y="164" text-anchor="middle" class="small">1. route: only chat endpoints</text>
+  <text x="387" y="190" text-anchor="middle" class="small">2. decode: gzip, json, protobuf</text>
+  <text x="387" y="216" text-anchor="middle" class="small">3. detect: signed rules + deny list</text>
+  <text x="387" y="242" text-anchor="middle" class="small">4. decide: effective settings</text>
+  <text x="387" y="268" text-anchor="middle" class="small">5. forward, redact or block</text>
+  <text x="387" y="302" text-anchor="middle" class="small">audit log (local, metadata only)</text>
+
+  <path d="M198 208H258" class="line" marker-end="url(#arrow)"/>
+  <path d="M512 208H588" class="line" marker-end="url(#arrow)"/>
+
+  <rect x="592" y="170" width="68" height="76" rx="10" class="box"/>
+  <text x="626" y="203" text-anchor="middle" class="title">AI</text>
+  <text x="626" y="224" text-anchor="middle" class="small">provider</text>
+
+  <rect x="262" y="356" width="76" height="52" rx="8" class="blocked"/>
+  <text x="300" y="386" text-anchor="middle" class="title">block</text>
+  <rect x="350" y="356" width="76" height="52" rx="8" class="safe"/>
+  <text x="388" y="386" text-anchor="middle" class="title">redact</text>
+  <rect x="438" y="356" width="74" height="52" rx="8" class="safe"/>
+  <text x="475" y="386" text-anchor="middle" class="title">allow</text>
+  <path d="M387 324V352" class="line" marker-end="url(#arrow)"/>
+
+  <text x="824" y="38" text-anchor="middle" class="small">Your backend (any server that speaks the contract)</text>
+  <rect x="724" y="96" width="200" height="228" rx="12" class="box"/>
+  <text x="824" y="126" text-anchor="middle" class="title">Backend</text>
+  <text x="824" y="164" text-anchor="middle" class="small">GET /v1/rules</text>
+  <text x="824" y="184" text-anchor="middle" class="small">signed, static file is enough</text>
+  <text x="824" y="222" text-anchor="middle" class="small">POST /v1/usage (optional)</text>
+  <text x="824" y="242" text-anchor="middle" class="small">metadata only, never content</text>
+  <text x="824" y="280" text-anchor="middle" class="small">POST /v1/enroll (optional)</text>
+  <text x="824" y="300" text-anchor="middle" class="small">device credential</text>
+
+  <path d="M724 150H516" class="dash" marker-end="url(#arrow)"/>
+  <text x="620" y="141" text-anchor="middle" class="small">signed rules</text>
+  <path d="M516 262H724" class="dash" marker-end="url(#arrow)"/>
+  <text x="620" y="282" text-anchor="middle" class="small">usage</text>
+
+  <text x="824" y="372" text-anchor="middle" class="small">The client verifies every rules response</text>
+  <text x="824" y="392" text-anchor="middle" class="small">against keys pinned in local config.</text>
+</svg>

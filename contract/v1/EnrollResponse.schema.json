@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EnrollResponse",
+  "description": "The backend derives the organisation from the enrollment token; the client never states it.",
+  "type": "object",
+  "properties": {
+    "device_credential": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0,
+      "default": null
+    },
+    "org_id": {
+      "description": "The organisation the token belongs to. The client stores it and rejects snapshots whose `audience` differs.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "device_credential"
+  ]
+}

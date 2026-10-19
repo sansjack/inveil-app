@@ -1,0 +1,531 @@
+openapi: 3.1.0
+info:
+  title: Inveil backend contract
+  version: "1.0.0"
+  summary: What a backend must serve for the Inveil client.
+  description: |
+    Version 1 of the contract between the Inveil client and a backend. The types are defined in Rust in
+    `crates/contract`; this file describes the same shapes for implementers who do not use Rust. Where they differ,
+    the Rust types win. Paths shown are the defaults and can be changed in the client configuration
+    (`backend.rules_path`, `backend.enroll_path`, `usage.path`).
+
+    Every payload that changes client behaviour is delivered inside a signed envelope. The client verifies the
+    signature over the exact bytes of `payload` before it parses anything. See `docs/CONTRACT.md`.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: https://backend.example.com
+    description: Your backend. The client requires https, or loopback, or `backend.allow_insecure_http = true`.
+paths:
+  /v1/rules:
+    get:
+      operationId: getRules
+      summary: Signed rules snapshot
+      description: |
+        Returns the current snapshot for the caller. The `ETag` is the quoted lower-case hex SHA-256 of the exact
+        `payload` string. The client sends it back in `If-None-Match`. Static hosts may ignore conditional requests
+        and answer 200 every time.
+      security:
+        - {}
+        - bearer: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A signed envelope whose payload is a `Snapshot`.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Quoted hex SHA-256 of the payload bytes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedEnvelope"
+        "304":
+          description: The snapshot the client holds is current.
+        "401":
+          description: Missing or invalid credential. The client drops its cached credential and may re-enroll.
+        "403":
+          description: The credential is valid but not allowed (for example, revoked device).
+  /v1/usage:
+    post:
+      operationId: postUsage
+      summary: Usage metadata batch (optional)
+      description: |
+        Metadata only, never prompt content. At most 100 events per batch. Whether the client sends usage is decided
+        by `settings.usage_reporting` in the signed snapshot (`required`, `optional`, `disabled`) and by local
+        configuration where the snapshot allows it. With `required`, a batch with an empty `events` list is sent as
+        a heartbeat every `settings.heartbeat_seconds`. A backend that never receives usage can omit this endpoint.
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UsageBatch"
+      responses:
+        "202":
+          description: Accepted. Any 2xx is treated as success.
+        "400":
+          description: Malformed batch.
+        "401":
+          description: Missing or invalid credential.
+        "403":
+          description: Credential not allowed.
+        "413":
+          description: More than 100 events.
+  /v1/enroll:
+    post:
+      operationId: postEnroll
+      summary: Exchange an enrollment token for a device credential (optional)
+      description: |
+        Not authenticated: the single-use or limited-use token in the body is the proof. The backend derives the
+        organisation (and optionally the user) from the token. The client never states an organisation. The client
+        stores the returned credential in the OS keychain and discards the token.
+      security:
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollRequest"
+      responses:
+        "200":
+          description: Enrolled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollResponse"
+        "400":
+          description: Malformed request.
+        "403":
+          description: Token unknown, expired, revoked or out of uses. Use one answer for all of these.
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness (optional)
+      security:
+        - {}
+      responses:
+        "200":
+          description: The backend is up.
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        A device credential from `/v1/enroll`, a static token (`auth.mode = static_token`) or a device-flow access
+        token, depending on the client's `auth.mode`. With `auth.mode = none` no header is sent.
+  schemas:
+    SignedEnvelope:
+      type: object
+      additionalProperties: false
+      required: [payload, signatures]
+      properties:
+        payload:
+          type: string
+          description: |
+            The JSON document as a string. It is signed as is and never re-encoded, so do not reformat it after
+            signing.
+          contentMediaType: application/json
+          contentSchema:
+            $ref: "#/components/schemas/Snapshot"
+        signatures:
+          type: array
+          description: |
+            One entry per signing key. The client needs at least `threshold` valid signatures from distinct pinned
+            keys (1 for rules snapshots).
+          items:
+            $ref: "#/components/schemas/SignatureEntry"
+        delegation:
+          $ref: "#/components/schemas/Delegation"
+    SignatureEntry:
+      type: object
+      additionalProperties: false
+      required: [key_id, signature]
+      properties:
+        key_id:
+          type: string
+        signature:
+          type: string
+          description: Base64 Ed25519 signature over the domain prefix followed by the payload bytes.
+    Delegation:
+      type: object
+      description: A root-signed certificate for the key that signed the payload (hosted mode).
+      additionalProperties: false
+      required: [key_id, public_key, not_before, not_after, root_key_id, signature]
+      properties:
+        key_id:
+          type: string
+        public_key:
+          type: string
+          description: Base64 Ed25519 public key being delegated.
+        not_before:
+          type: integer
+          minimum: 0
+        not_after:
+          type: integer
+          minimum: 0
+        audience:
+          type: [string, "null"]
+          description: When set, the delegated key may only sign snapshots for this audience.
+        root_key_id:
+          type: string
+        signature:
+          type: string
+          description: |
+            Base64 root signature under the `inveil-delegation-v2\0` domain over the length-prefixed delegation
+            fields. The exact byte layout is in `docs/CONTRACT.md` (Signing domains).
+    Snapshot:
+      type: object
+      additionalProperties: false
+      required: [schema, version, issued_at, expires_at, pii]
+      properties:
+        schema:
+          type: integer
+          const: 1
+        version:
+          type: integer
+          minimum: 0
+          description: Strictly increasing per audience. A lower version, or the same version with other content, is refused.
+        issued_at:
+          type: integer
+          minimum: 0
+          description: Unix seconds.
+        expires_at:
+          type: integer
+          minimum: 0
+          description: Unix seconds.
+        audience:
+          type: [string, "null"]
+          description: Organisation id. Rejected if it differs from the client's enrolled organisation.
+        pii:
+          type: array
+          items:
+            $ref: "#/components/schemas/PiiRule"
+        tools:
+          type: array
+          default: []
+          items:
+            $ref: "#/components/schemas/Tool"
+        ca_domains:
+          type: array
+          default: []
+          items:
+            type: string
+          description: The only domains the browser CA may cover.
+        settings:
+          $ref: "#/components/schemas/Settings"
+        revoked_key_ids:
+          type: array
+          default: []
+          items:
+            type: string
+    PiiRule:
+      type: object
+      additionalProperties: false
+      required: [id, label, pattern, action, enabled]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        pattern:
+          type: string
+          description: Regular expression in Rust `regex` syntax. Oversized patterns are rejected.
+        validator:
+          type: [string, "null"]
+          enum: [luhn, ssn, iban, null]
+        action:
+          type: string
+          enum: [block, log, redact]
+        enabled:
+          type: boolean
+    Tool:
+      type: object
+      additionalProperties: false
+      required: [id, name, via, enabled, endpoints, hosts]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        via:
+          type: string
+          enum: [local, browser]
+          description: |
+            `local`: the tool is pointed at the client's localhost proxy, which forwards to `upstream`.
+            `browser`: the browser or system proxy catches the traffic and the client decrypts `hosts`.
+        enabled:
+          type: boolean
+        upstream:
+          type: [string, "null"]
+        prefix:
+          type: [string, "null"]
+          description: Local tools only. Path the tool uses on the client's localhost port; null is the default route.
+        env_var:
+          type: [string, "null"]
+          description: Local tools only. Environment variable the installer points at the proxy, for example `ANTHROPIC_BASE_URL`.
+        endpoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/Endpoint"
+        hosts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Host"
+    Host:
+      type: object
+      additionalProperties: false
+      required: [host, endpoints]
+      properties:
+        host:
+          type: string
+        endpoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/Endpoint"
+    Endpoint:
+      type: object
+      additionalProperties: false
+      required: [path, match, format]
+      properties:
+        path:
+          type: string
+        match:
+          type: string
+          enum: [exact, prefix]
+        format:
+          type: string
+          enum: [json, protobuf, protobuf-framed, form, websocket-json, connect-stream]
+    Settings:
+      type: object
+      description: |
+        Policy knobs the backend enforces. Local configuration may only make them stricter. A snapshot that omits
+        `settings` leaves the client on its last good settings.
+      additionalProperties: false
+      properties:
+        dry_run:
+          type: [boolean, "null"]
+          description: "`false` forces enforcement. Null leaves the choice to local configuration."
+        block_unscannable:
+          type: [boolean, "null"]
+          description: Legacy. `true` equals `failure_modes.unscannable = closed` when `failure_modes` is silent.
+        max_tokens:
+          type: [integer, "null"]
+          minimum: 0
+          description: Maximum estimated tokens per request. 0 or null means no server limit.
+        deny:
+          type: array
+          default: []
+          items:
+            type: string
+          description: Regular expressions blocked in addition to the rules.
+        browser_fail_closed:
+          type: [boolean, "null"]
+          description: Legacy. `true` equals `failure_modes.service_down = closed` when `failure_modes` is silent.
+        allowed_upstreams:
+          type: array
+          default: []
+          items:
+            type: string
+          description: "`https://host` values the local `upstream` must be one of. Empty means unrestricted."
+        min_poll_seconds:
+          type: [integer, "null"]
+          minimum: 0
+        min_client_version:
+          type: [string, "null"]
+        allow_debug:
+          type: [boolean, "null"]
+        usage_reporting:
+          type: [string, "null"]
+          enum: [required, optional, disabled, null]
+          description: Null means `optional`.
+        heartbeat_seconds:
+          type: [integer, "null"]
+          minimum: 0
+        allow_offline:
+          type: [boolean, "null"]
+        fail_closed_on_expiry:
+          type: boolean
+          default: false
+          description: Legacy. `true` equals `failure_modes.policy_expired = closed` when `failure_modes` is silent.
+        failure_modes:
+          $ref: "#/components/schemas/FailureModes"
+    FailureModes:
+      type: object
+      description: |
+        What to do per failure condition. Each key falls back to `default`. Local configuration can only choose
+        `closed` in managed mode; a standalone owner may also choose `open` locally when this object is silent. Without a signed or local value the client uses `closed` for `unscannable`, `scan_error` and
+        `policy_expired`, and `open` for `service_down`. Signed values beat the legacy flags in `Settings`.
+      additionalProperties: false
+      properties:
+        default:
+          $ref: "#/components/schemas/FailMode"
+        unscannable:
+          $ref: "#/components/schemas/FailMode"
+        scan_error:
+          $ref: "#/components/schemas/FailMode"
+        policy_expired:
+          $ref: "#/components/schemas/FailMode"
+        service_down:
+          $ref: "#/components/schemas/FailMode"
+    FailMode:
+      type: [string, "null"]
+      enum: [open, closed, null]
+    UsageBatch:
+      type: object
+      additionalProperties: false
+      required: [client, events]
+      properties:
+        client:
+          $ref: "#/components/schemas/ClientInfo"
+        events:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/UsageEvent"
+    ClientInfo:
+      type: object
+      description: Lets the backend notice clients running a different policy or configuration than it published.
+      additionalProperties: false
+      required: [version, policy_version, config_hash]
+      properties:
+        version:
+          type: string
+        policy_version:
+          type: integer
+          minimum: 0
+        config_hash:
+          type: string
+          description: Hex SHA-256 of the effective (merged) configuration, which includes the failure modes.
+        failure_modes:
+          description: The resolved mode of every failure condition. Absent from older clients.
+          allOf:
+            - $ref: "#/components/schemas/FailureModes"
+        fail_open_count:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Requests passed through because a failure mode was `open`, since the client started.
+    UsageEvent:
+      type: object
+      description: Metadata about one proxied request. Never carries prompt content.
+      additionalProperties: false
+      required: [id, timestamp, provider, model, input_tokens, output_tokens, latency_ms, status, blocked, findings]
+      properties:
+        id:
+          type: string
+          description: Unique per event. Delivery is at least once, so deduplicate on it.
+        timestamp:
+          type: integer
+          minimum: 0
+        provider:
+          type: string
+        model:
+          type: string
+        input_tokens:
+          type: integer
+          minimum: 0
+        output_tokens:
+          type: integer
+          minimum: 0
+        latency_ms:
+          type: integer
+          minimum: 0
+        status:
+          type: integer
+          minimum: 0
+          maximum: 65535
+        blocked:
+          type: boolean
+        findings:
+          type: integer
+          minimum: 0
+    EnrollRequest:
+      type: object
+      additionalProperties: false
+      required: [token, client_version]
+      properties:
+        token:
+          type: string
+        client_version:
+          type: string
+        device_label:
+          type: [string, "null"]
+    EnrollResponse:
+      type: object
+      additionalProperties: false
+      required: [device_credential]
+      properties:
+        device_credential:
+          type: string
+        expires_at:
+          type: [integer, "null"]
+          minimum: 0
+        org_id:
+          type: [string, "null"]
+          description: The organisation the token belongs to. The client rejects snapshots whose audience differs.
+    UpdateManifest:
+      type: object
+      description: |
+        Payload of a signed update manifest, served by the update feed (`update.feed_url`), not by `/v1`. Wrapped in
+        a `SignedEnvelope` and signed under the `inveil-update-v1\0` domain.
+      additionalProperties: false
+      required: [schema, channel, version, published_at, expires_at, threshold, artifacts]
+      properties:
+        schema:
+          type: integer
+          const: 1
+        channel:
+          type: string
+        version:
+          type: string
+          description: Semantic version.
+        published_at:
+          type: integer
+          minimum: 0
+        expires_at:
+          type: integer
+          minimum: 0
+        min_supported:
+          type: [string, "null"]
+        threshold:
+          type: integer
+          minimum: 1
+          description: Distinct pinned update keys that must have signed.
+        artifacts:
+          type: object
+          description: Keyed by `<os>-<arch>`, for example `macos-aarch64`, `windows-x86_64`, `linux-x86_64`.
+          additionalProperties:
+            $ref: "#/components/schemas/Artifact"
+        notes_url:
+          type: [string, "null"]
+        revoked_key_ids:
+          type: array
+          default: []
+          items:
+            type: string
+    Artifact:
+      type: object
+      description: A raw binary for one target. Archives are never referenced.
+      additionalProperties: false
+      required: [url, sha256, size]
+      properties:
+        url:
+          type: string
+        sha256:
+          type: string
+          description: Lower-case hex SHA-256 of the binary.
+        size:
+          type: integer
+          minimum: 0

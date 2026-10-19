@@ -1,0 +1,9 @@
+# Security-critical code needs a maintainer review (enforced by branch protection).
+*                          @sansjack
+/.github/                  @sansjack
+/deny.toml                 @sansjack
+/scripts/install.*         @sansjack
+/crates/engine/src/signing.rs @sansjack
+/crates/inveil/src/update/ @sansjack
+/crates/contract/          @sansjack
+/contract/                 @sansjack
