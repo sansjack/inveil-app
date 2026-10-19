@@ -1,8 +1,8 @@
 //! Where each local tool reads its base URL from, so the installer can write the proxy address there.
 //!
 //! Only files whose location and format are documented by the tool are written. Gemini CLI loads variables from
-//! `~/.gemini/.env` (<https://geminicli.com/docs/reference/configuration>). Codex reads `openai_base_url` from a TOML
-//! file whose comments would not survive a rewrite, so it is left to the person and reported by `inveil doctor`.
+//! `~/.gemini/.env` (<https://geminicli.com/docs/reference/configuration>). Codex reads `openai_base_url` from
+//! `$CODEX_HOME/config.toml` (default `~/.codex`), which is edited in place so its comments and other keys survive.
 use super::claude_settings;
 use crate::error::AppError;
 use crate::util::{create_directory, write_atomically, PRIVATE_DIRECTORY_MODE};
@@ -10,6 +10,11 @@ use std::path::{Path, PathBuf};
 
 const CLAUDE_CODE_TOOL_ID: &str = "claude-code";
 const GEMINI_CLI_TOOL_ID: &str = "gemini-cli";
+const CODEX_API_TOOL_ID: &str = "codex-api";
+const CODEX_DIR: &str = ".codex";
+const CODEX_CONFIG_FILE: &str = "config.toml";
+const CODEX_BASE_URL_KEY: &str = "openai_base_url";
+const CODEX_BASE_URL_VARIABLE: &str = "OPENAI_BASE_URL";
 const GEMINI_DIR: &str = ".gemini";
 const DOTENV_FILE: &str = ".env";
 const LOOPBACK_PREFIX: &str = "http://127.0.0.1:";
@@ -21,13 +26,14 @@ const KNOWN_BASE_URL_VARIABLES: [&str; 3] = [
     "GOOGLE_GEMINI_BASE_URL",
 ];
 /// Catalog tools whose base-URL variable may be a name the catalog chose, when it has the strict shape of one.
-const KNOWN_TOOL_IDS: [&str; 3] = [CLAUDE_CODE_TOOL_ID, "codex-api", GEMINI_CLI_TOOL_ID];
+const KNOWN_TOOL_IDS: [&str; 3] = [CLAUDE_CODE_TOOL_ID, CODEX_API_TOOL_ID, GEMINI_CLI_TOOL_ID];
 const BASE_URL_SUFFIX: &str = "_BASE_URL";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsFile {
     ClaudeUser,
     GeminiDotenv,
+    CodexConfig,
 }
 
 impl SettingsFile {
@@ -35,6 +41,7 @@ impl SettingsFile {
         match tool_id {
             CLAUDE_CODE_TOOL_ID => Some(Self::ClaudeUser),
             GEMINI_CLI_TOOL_ID => Some(Self::GeminiDotenv),
+            CODEX_API_TOOL_ID => Some(Self::CodexConfig),
             _ => None,
         }
     }
@@ -43,6 +50,7 @@ impl SettingsFile {
         match self {
             Self::ClaudeUser => CLAUDE_CODE_TOOL_ID,
             Self::GeminiDotenv => GEMINI_CLI_TOOL_ID,
+            Self::CodexConfig => CODEX_API_TOOL_ID,
         }
     }
 
@@ -51,6 +59,7 @@ impl SettingsFile {
         match self {
             Self::ClaudeUser => claude_settings::set(&[(variable.to_string(), url.to_string())]),
             Self::GeminiDotenv => set_dotenv(&dotenv_path()?, variable, url),
+            Self::CodexConfig => set_codex(&codex_config_path()?, variable, url),
         }
     }
 
@@ -58,6 +67,7 @@ impl SettingsFile {
         match self {
             Self::ClaudeUser => claude_settings::remove(&[variable.to_string()]),
             Self::GeminiDotenv => remove_dotenv(&dotenv_path()?, variable),
+            Self::CodexConfig => remove_codex(&codex_config_path()?),
         }
     }
 
@@ -65,6 +75,7 @@ impl SettingsFile {
         match self {
             Self::ClaudeUser => claude_settings::read_variable(variable),
             Self::GeminiDotenv => read_dotenv(&dotenv_path()?, variable),
+            Self::CodexConfig => read_codex(&codex_config_path()?),
         }
     }
 }
@@ -73,6 +84,80 @@ fn dotenv_path() -> Result<PathBuf, AppError> {
     Ok(claude_settings::home_directory()?
         .join(GEMINI_DIR)
         .join(DOTENV_FILE))
+}
+
+// Codex itself reads CODEX_HOME, so the file written here is the one it loads.
+fn codex_config_path() -> Result<PathBuf, AppError> {
+    let home = match std::env::var_os("CODEX_HOME") {
+        Some(directory) => PathBuf::from(directory),
+        None => claude_settings::home_directory()?.join(CODEX_DIR),
+    };
+    Ok(home.join(CODEX_CONFIG_FILE))
+}
+
+fn read_codex_document(path: &Path) -> Result<toml_edit::DocumentMut, AppError> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(source) => {
+            return Err(AppError::ReadFile {
+                path: path.to_path_buf(),
+                source,
+            })
+        }
+    };
+    text.parse().map_err(|error| {
+        AppError::Usage(format!(
+            "{} is not valid TOML, so inveil left it alone: {error}",
+            path.display()
+        ))
+    })
+}
+
+fn write_codex_document(path: &Path, document: &toml_edit::DocumentMut) -> Result<(), AppError> {
+    let failed = |source| AppError::WriteFile {
+        path: path.to_path_buf(),
+        source,
+    };
+    if let Some(parent) = path.parent() {
+        create_directory(parent, PRIVATE_DIRECTORY_MODE).map_err(failed)?;
+    }
+    write_atomically(path, document.to_string().as_bytes()).map_err(failed)
+}
+
+fn set_codex(path: &Path, variable: &str, url: &str) -> Result<(), AppError> {
+    if variable != CODEX_BASE_URL_VARIABLE {
+        return Err(AppError::Usage(format!(
+            "Codex reads its base URL only as {CODEX_BASE_URL_VARIABLE}, not {variable}"
+        )));
+    }
+    let mut document = read_codex_document(path)?;
+    document[CODEX_BASE_URL_KEY] = toml_edit::value(url);
+    write_codex_document(path, &document)
+}
+
+/// Removes the key only when it still points at the loopback proxy; a value the person set is theirs.
+fn remove_codex(path: &Path) -> Result<(), AppError> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut document = read_codex_document(path)?;
+    let ours = document
+        .get(CODEX_BASE_URL_KEY)
+        .and_then(|item| item.as_str())
+        .is_some_and(|value| value.starts_with(LOOPBACK_PREFIX));
+    if !ours {
+        return Ok(());
+    }
+    document.remove(CODEX_BASE_URL_KEY);
+    write_codex_document(path, &document)
+}
+
+fn read_codex(path: &Path) -> Result<Option<String>, AppError> {
+    Ok(read_codex_document(path)?
+        .get(CODEX_BASE_URL_KEY)
+        .and_then(|item| item.as_str())
+        .map(String::from))
 }
 
 /// True for `A-Z`, `0-9` and `_` names that start with a letter and end in `_BASE_URL` after a non-empty prefix.
@@ -200,7 +285,11 @@ mod tests {
             SettingsFile::for_tool("gemini-cli"),
             Some(SettingsFile::GeminiDotenv)
         );
-        assert_eq!(SettingsFile::for_tool("codex-api"), None);
+        assert_eq!(
+            SettingsFile::for_tool("codex-api"),
+            Some(SettingsFile::CodexConfig)
+        );
+        assert_eq!(SettingsFile::for_tool("grok-api"), None);
     }
 
     #[test]
@@ -226,6 +315,50 @@ mod tests {
                 .as_deref(),
             Some(URL)
         );
+    }
+
+    #[test]
+    fn codex_config_keeps_comments_and_tables_and_removes_only_our_value() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(".codex/config.toml");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original = "# my model\nmodel = \"gpt-5\"\n\n[profiles.work]\nmodel = \"o3\" # fast\n";
+        std::fs::write(&path, original).unwrap();
+        let url = "http://127.0.0.1:8787/openai";
+
+        set_codex(&path, "OPENAI_BASE_URL", url).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("# my model") && written.contains("model = \"o3\" # fast"));
+        assert_eq!(read_codex(&path).unwrap().as_deref(), Some(url));
+        let parsed: toml::Table = written.parse().unwrap();
+        assert_eq!(
+            parsed["openai_base_url"].as_str(),
+            Some(url),
+            "must be a top-level key"
+        );
+
+        remove_codex(&path).unwrap();
+        assert_eq!(read_codex(&path).unwrap(), None);
+        assert!(std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("# my model"));
+
+        std::fs::write(&path, "openai_base_url = \"https://mine.example\"\n").unwrap();
+        remove_codex(&path).unwrap();
+        assert_eq!(
+            read_codex(&path).unwrap().as_deref(),
+            Some("https://mine.example")
+        );
+    }
+
+    #[test]
+    fn codex_config_that_is_not_toml_is_left_untouched() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        std::fs::write(&path, "not = = toml").unwrap();
+
+        assert!(set_codex(&path, "OPENAI_BASE_URL", "http://127.0.0.1:8787/openai").is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not = = toml");
     }
 
     #[test]

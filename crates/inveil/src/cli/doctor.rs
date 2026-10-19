@@ -519,7 +519,8 @@ mod tests {
         assert_eq!(claude.status, Status::NeedsSetup);
         assert!(claude.reasons[0].contains("run `inveil install`"));
         let codex = tool(&report, "codex-api");
-        assert!(codex.reasons[0].contains("export OPENAI_BASE_URL=http://127.0.0.1:8787/openai"));
+        assert_eq!(codex.status, Status::NeedsSetup);
+        assert!(codex.reasons[0].contains("run `inveil install`"));
     }
 
     #[test]

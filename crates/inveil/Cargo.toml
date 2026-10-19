@@ -23,6 +23,7 @@ base64.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 toml = "0.8"
+toml_edit = "0.22"
 semver = "1"
 axum = "0.7"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal", "fs"] }

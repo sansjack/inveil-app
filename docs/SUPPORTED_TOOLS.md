@@ -19,7 +19,7 @@ The tool talks plain HTTP to `127.0.0.1:<listen.port>`, so no CA is involved. Th
 | Claude Code (`claude-code`) | Covered automatically | `inveil install` writes `ANTHROPIC_BASE_URL` to the `env` map of `~/.claude/settings.json`. `inveil install --managed` writes it to the machine-wide managed settings instead (see below). |
 | Gemini CLI with an API key (`gemini-cli`) | Covered automatically | `inveil install` writes `GOOGLE_GEMINI_BASE_URL` to `~/.gemini/.env`. Gemini CLI documents that variable for API-key authentication only. |
 | Gemini CLI with a Google login | Not yet | The base-URL variable is not documented for that sign-in, and its traffic is not routed through the proxy. |
-| Codex with an OpenAI API key (`codex-api`) | Covered with a setup step | Set `OPENAI_BASE_URL=http://127.0.0.1:<port>/openai` in your shell, or `openai_base_url` in `~/.codex/config.toml`. inveil does not edit that TOML file because a rewrite would lose its comments; `inveil install` prints the line to add. |
+| Codex with an OpenAI API key (`codex-api`) | Covered | `inveil install` sets `openai_base_url` in `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`), editing it in place so comments and other keys are kept. A file that is not valid TOML is left alone and install fails with the reason. `inveil uninstall` removes the key only while it still points at the proxy. |
 | xAI API (`xai-api`) | Not yet | The default catalog gives this tool no `env_var`, so there is nothing to set. Add one to your signed catalog if your SDK reads a base-URL variable. |
 
 ## Browser traffic (decrypted by the browser proxy)

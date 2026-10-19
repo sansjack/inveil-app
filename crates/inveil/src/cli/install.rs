@@ -6,6 +6,7 @@ use crate::config::{AuthMode, Config};
 use crate::error::AppError;
 use crate::platform;
 use crate::runtime::Runtime;
+use contract::Via;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -139,36 +140,83 @@ pub async fn install(config: Config, managed: bool) -> Result<String, AppError> 
     let log = platform::default_log_path()?;
     platform::install_service(&executable, &log)?;
 
+    let tool_name = |id: &str| {
+        let tool = policy.policy.tools.iter().find(|tool| tool.id == id);
+        tool.map_or(id.to_string(), |tool| tool.name.clone())
+    };
+    let mut wired = vec![];
     let mut manual_steps = vec![];
     for tool in policy.policy.local_tool_wiring() {
         let url = claude_settings::proxy_url(port, tool.prefix);
         check_entry(tool.tool_id, tool.env_var, &url)?;
         match SettingsFile::for_tool(tool.tool_id) {
-            Some(file) => file.set(tool.env_var, &url)?,
-            None => manual_steps.push(format!("export {}={url}", tool.env_var)),
+            Some(file) => {
+                file.set(tool.env_var, &url)?;
+                wired.push(tool_name(tool.tool_id));
+            }
+            None => manual_steps.push(format!(
+                "{}: export {}={url}",
+                tool_name(tool.tool_id),
+                tool.env_var
+            )),
         }
     }
+    let browser_tools: Vec<String> = policy
+        .policy
+        .tools
+        .iter()
+        .filter(|tool| tool.enabled && tool.via == Via::Browser)
+        .map(|tool| tool.name.clone())
+        .collect();
 
+    if !wait_until_running(port).await {
+        return Err(AppError::Usage(format!(
+            "installed, but the proxy is not responding on port {port}; see {}",
+            log.display()
+        )));
+    }
+
+    let mut message = format!(
+        "inveil is active on 127.0.0.1:{port}. Log: {}",
+        log.display()
+    );
+    if !wired.is_empty() {
+        message.push_str(&format!(
+            "\nSet up: {}. Restart any open session of these tools.",
+            wired.join(", ")
+        ));
+    }
+    if !manual_steps.is_empty() {
+        message.push_str(&format!(
+            "\nThese tools have no settings file inveil can write; set the variable yourself:\n  {}",
+            manual_steps.join("\n  ")
+        ));
+    }
+    // The organisation enabled browser tools, so set up the browser CA now: install is interactive and the OS may ask
+    // the user to approve trusting it, which the background service cannot do.
+    if !browser_tools.is_empty() {
+        match browser::setup(runtime.config.as_ref().clone()).await {
+            Ok(notes) => message.push_str(&format!(
+                "\nBrowser protection for {}:\n{notes}",
+                browser_tools.join(", ")
+            )),
+            Err(error) => message.push_str(&format!(
+                "\nBrowser protection for {} is NOT set up: {error}\nRun `inveil browser-setup` to retry.",
+                browser_tools.join(", ")
+            )),
+        }
+    }
+    Ok(message)
+}
+
+async fn wait_until_running(port: u16) -> bool {
     for _ in 0..START_CHECKS {
         if is_running(port) {
-            let mut message = format!(
-                "inveil is active on 127.0.0.1:{port}. Restart any open Claude Code session. Log: {}",
-                log.display()
-            );
-            if !manual_steps.is_empty() {
-                message.push_str(&format!(
-                    "\nThese tools have no settings file inveil can write; set the variable yourself:\n  {}",
-                    manual_steps.join("\n  ")
-                ));
-            }
-            return Ok(message);
+            return true;
         }
         tokio::time::sleep(START_CHECK_INTERVAL).await;
     }
-    Err(AppError::Usage(format!(
-        "installed, but the proxy is not responding on port {port}; see {}",
-        log.display()
-    )))
+    false
 }
 
 fn install_managed(config: Config) -> Result<String, AppError> {
