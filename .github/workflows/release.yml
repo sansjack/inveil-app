@@ -696,8 +696,9 @@ jobs:
           $env:INVEIL_INSTALL_TESTING = '1'
           $env:INVEIL_INSTALL_BASE_URL = ([Uri]('file:///' + ((Resolve-Path dl).Path -replace '\\', '/'))).AbsoluteUri
           $env:INVEIL_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'inveil-install'
-          $arguments = @('-NoEnroll')
-          if ($env:CHANNEL -eq 'beta') { $arguments += @('-Channel', 'beta', '-Version', $env:VERSION) }
+          # A hashtable, not an array: splatting an array into a script passes positional values, not parameters.
+          $arguments = @{ NoEnroll = $true }
+          if ($env:CHANNEL -eq 'beta') { $arguments.Channel = 'beta'; $arguments.Version = $env:VERSION }
           & ./dl/install.ps1 @arguments
           if (-not $?) { exit 1 }
 

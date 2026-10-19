@@ -169,8 +169,9 @@ jobs:
         run: |
           $installDir = Join-Path $env:RUNNER_TEMP 'inveil-install'
           $env:INVEIL_INSTALL_DIR = $installDir
-          $arguments = @('-NoEnroll', '-Version', $env:VERSION)
-          if ($env:CHANNEL -eq 'beta') { $arguments += @('-Channel', 'beta') }
+          # A hashtable, not an array: splatting an array into a script block passes positional values, not parameters.
+          $arguments = @{ NoEnroll = $true; Version = $env:VERSION }
+          if ($env:CHANNEL -eq 'beta') { $arguments.Channel = 'beta' }
           $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/install.ps1"
           $response = Invoke-WebRequest -UseBasicParsing $url
           # GitHub serves release assets as application/octet-stream, so Content is a byte array, not text.
