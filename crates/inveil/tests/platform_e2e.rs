@@ -3,6 +3,8 @@
 //! every file under a temp directory and turns system commands into no-ops, so this never touches the real service
 //! manager, trust store or proxy settings.
 
+// The Windows-only helpers (program data folder, elevation check) are used by the binary, not by this test.
+#[cfg_attr(windows, allow(dead_code, unused_imports))]
 #[path = "../src/platform/mod.rs"]
 mod platform;
 
