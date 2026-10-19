@@ -274,7 +274,7 @@ impl Setup {
 
     fn render(&self, directory: &Path, port: u16) -> String {
         let mut config = format!(
-            "{}upstream = \"{}\"\nnotify = false\nstate_keychain = false\ndata_dir = \"{}\"\n[listen]\nport = {port}\nbrowser_port = {}\n[update]\nmode = \"off\"\n[logging]\naudit_file = \"{}\"\n",
+            "{}upstream = \"{}\"\nnotify = false\nstate_keychain = false\ndata_dir = '{}'\n[listen]\nport = {port}\nbrowser_port = {}\n[update]\nmode = \"off\"\n[logging]\naudit_file = '{}'\n",
             self.top_level,
             self.upstream,
             directory.join("data").display(),

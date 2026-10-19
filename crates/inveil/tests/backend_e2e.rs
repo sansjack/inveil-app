@@ -260,7 +260,7 @@ async fn a_signed_local_rules_file_works_with_no_backend_and_no_network() {
     let setup = Setup::new(&upstream)
         .with_backend(format!("http://{}", tripwire.address), &key)
         .top_level(&format!(
-            "offline = true\nrules_file = \"{}\"",
+            "offline = true\nrules_file = '{}'",
             rules_file.display()
         ));
     let proxy = RunningProxy::start(directory.path(), &setup);
