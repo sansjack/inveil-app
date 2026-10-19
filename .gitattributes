@@ -1,0 +1,2 @@
+# The schema test compares these files byte for byte with LF output, so Windows checkouts must not convert them.
+contract/v1/** text eol=lf
