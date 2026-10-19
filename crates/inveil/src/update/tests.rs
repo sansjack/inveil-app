@@ -221,6 +221,17 @@ fn list_dir(dir: &std::path::Path) -> Vec<String> {
     names
 }
 
+/// The install directory after a swap. Windows cannot overwrite the running executable, so it moves it aside to
+/// `inveil.old` (deleted on the next start) and Unix leaves nothing behind.
+fn entries_after_swap(entries: &[&str]) -> Vec<String> {
+    let mut names: Vec<String> = entries.iter().map(|name| name.to_string()).collect();
+    if cfg!(windows) {
+        names.push("inveil.old".to_string());
+    }
+    names.sort();
+    names
+}
+
 fn fixture_with_release(version: &str) -> (Fixture, Key) {
     let signer = key("release");
     let mut fixture = Fixture::new(&[&signer]);
@@ -241,7 +252,7 @@ fn installs_a_newer_release_and_keeps_the_previous_binary() {
     assert_eq!(std::fs::read(previous).unwrap(), OLD_BINARY);
     assert_eq!(
         fixture.install_dir_entries(),
-        [PENDING, "inveil", "inveil.prev"]
+        entries_after_swap(&[PENDING, "inveil", "inveil.prev"])
     );
     assert_eq!(fixture.health.restarts.get(), 1);
     #[cfg(unix)]
@@ -281,7 +292,7 @@ fn staged_download_is_installed_later_without_downloading_again() {
     assert_eq!(fixture.installed(), NEW_BINARY);
     assert_eq!(
         fixture.install_dir_entries(),
-        [PENDING, "inveil", "inveil.prev"]
+        entries_after_swap(&[PENDING, "inveil", "inveil.prev"])
     );
 }
 
@@ -666,7 +677,10 @@ fn unhealthy_new_version_is_rolled_back_to_the_previous_binary() {
     ));
     assert_eq!(fixture.installed(), OLD_BINARY);
     assert_eq!(fixture.health.restarts.get(), 2);
-    assert_eq!(fixture.install_dir_entries(), ["inveil", "inveil.prev"]);
+    assert_eq!(
+        fixture.install_dir_entries(),
+        entries_after_swap(&["inveil", "inveil.prev"])
+    );
 }
 
 #[test]
