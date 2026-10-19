@@ -166,12 +166,18 @@ impl StateStore {
         if !use_keychain {
             return Self::new(path, None);
         }
-        Self::new(path, Some(Arc::new(KeychainVault::anchor_of(directory, file_name))))
+        Self::new(
+            path,
+            Some(Arc::new(KeychainVault::anchor_of(directory, file_name))),
+        )
     }
 
     /// Deletes the keychain anchor of `file_name` in `directory`, for `inveil uninstall`. True when one was there.
     pub fn remove_anchor(directory: &Path, file_name: &str) -> Result<bool, keyring::Error> {
-        match KeychainVault::anchor_of(directory, file_name).entry()?.delete_credential() {
+        match KeychainVault::anchor_of(directory, file_name)
+            .entry()?
+            .delete_credential()
+        {
             Ok(()) => Ok(true),
             Err(keyring::Error::NoEntry) => Ok(false),
             Err(error) => Err(error),

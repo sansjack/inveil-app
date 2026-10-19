@@ -739,7 +739,8 @@ mod tests {
     }
 
     #[test]
-    fn the_signed_update_policy_replaces_the_local_mode_and_interval_but_never_the_trust_settings() {
+    fn the_signed_update_policy_replaces_the_local_mode_and_interval_but_never_the_trust_settings()
+    {
         let local = UpdateConfig {
             feed_url: Some("https://feed.example/manifest.json.sig".into()),
             ..pinned_update_keys(2)

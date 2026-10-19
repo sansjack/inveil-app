@@ -284,7 +284,10 @@ pub fn uninstall(config: Config) -> Result<String, AppError> {
             claude_settings::managed_path().display()
         ))
     };
-    let mut notes: Vec<String> = [browser_notes, managed_note].into_iter().flatten().collect();
+    let mut notes: Vec<String> = [browser_notes, managed_note]
+        .into_iter()
+        .flatten()
+        .collect();
     notes.extend(remove_keychain_items(&runtime));
     notes.extend(remove_local_files(&runtime)?);
     notes.push("inveil removed. Local tools talk to their APIs directly again.".to_string());
@@ -297,7 +300,9 @@ fn remove_keychain_items(runtime: &Runtime) -> Vec<String> {
     let mut notes = vec![];
     if runtime.config.backend.url.is_some() {
         match backend::forget_all(&runtime.config) {
-            Ok(true) => notes.push("Removed the stored credentials from the OS keychain.".to_string()),
+            Ok(true) => {
+                notes.push("Removed the stored credentials from the OS keychain.".to_string())
+            }
             Ok(false) => {}
             Err(error) => notes.push(format!(
                 "Could not remove the stored credentials from the OS keychain: {error}"
