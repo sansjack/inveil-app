@@ -850,7 +850,7 @@ fn signed_manifest_verifies_with_the_pinned_key_and_a_co_signature_adds_a_second
     let dir = TempDir::new().unwrap();
     let (first_key, first_public) = generate_key(dir.path(), "ci.key");
     let (second_key, second_public) = generate_key(dir.path(), "maintainer.key");
-    let mut threshold_two = manifest("0.2.0", NEW_BINARY);
+    let mut threshold_two = manifest("99.0.0", NEW_BINARY);
     threshold_two.threshold = 2;
     threshold_two.expires_at = unix_seconds() + 3_600;
     let payload_path = dir.path().join("manifest.json");
@@ -901,7 +901,7 @@ fn signed_manifest_verifies_with_the_pinned_key_and_a_co_signature_adds_a_second
     .unwrap();
     std::fs::write(&envelope_path, both).unwrap();
     let report = run_verify(&config, &strings(&[envelope])).unwrap();
-    assert!(report.contains("version: 0.2.0"));
+    assert!(report.contains("version: 99.0.0"));
     assert!(report.contains("channel: stable"));
     assert!(report.contains("signers: ci, maintainer"));
     assert!(report.contains("payload_sha256: "));
@@ -915,7 +915,7 @@ fn signing_reads_the_key_from_the_environment_and_rejects_a_wrong_role_on_verify
         "INVEIL_TEST_SIGNING_KEY",
         std::fs::read_to_string(&key_path).unwrap(),
     );
-    let mut release = manifest("0.2.0", NEW_BINARY);
+    let mut release = manifest("99.0.0", NEW_BINARY);
     release.expires_at = unix_seconds() + 3_600;
     let payload_path = dir.path().join("manifest.json");
     std::fs::write(&payload_path, serde_json::to_string(&release).unwrap()).unwrap();
@@ -968,7 +968,7 @@ fn signing_refuses_a_payload_that_is_not_a_valid_manifest() {
 fn verify_accepts_command_line_keys_and_checks_the_binary_against_the_manifest() {
     let dir = TempDir::new().unwrap();
     let (key_path, public_key) = generate_key(dir.path(), "update.key");
-    let mut release = manifest("0.2.0", NEW_BINARY);
+    let mut release = manifest("99.0.0", NEW_BINARY);
     release.expires_at = unix_seconds() + 3_600;
     let payload_path = dir.path().join("manifest.json");
     std::fs::write(&payload_path, serde_json::to_string(&release).unwrap()).unwrap();
@@ -1048,7 +1048,7 @@ fn ci_flow_signs_a_manifest_file_then_co_signs_the_resulting_envelope() {
     let dir = TempDir::new().unwrap();
     let (ci_key, ci_public) = generate_key(dir.path(), "ci.key");
     let (maintainer_key, maintainer_public) = generate_key(dir.path(), "maintainer.key");
-    let mut release = manifest("0.2.0", NEW_BINARY);
+    let mut release = manifest("99.0.0", NEW_BINARY);
     release.threshold = 2;
     release.expires_at = unix_seconds() + 3_600;
     let manifest_path = dir.path().join("update-manifest.json");
@@ -1100,7 +1100,7 @@ fn fixture_with_min_signatures(min_signatures: usize, trusted: &[&Key]) -> Fixtu
 fn a_manifest_cannot_lower_the_locally_pinned_minimum_number_of_signers() {
     let (first, second) = (key("ci"), key("maintainer"));
     let mut fixture = fixture_with_min_signatures(2, &[&first, &second]);
-    let lenient = manifest("0.2.0", NEW_BINARY);
+    let lenient = manifest("99.0.0", NEW_BINARY);
     assert_eq!(lenient.threshold, 1);
     fixture.serve(signed_by(&lenient, &[&first]), NEW_BINARY);
 
@@ -1122,7 +1122,7 @@ fn a_manifest_cannot_lower_the_locally_pinned_minimum_number_of_signers() {
 fn a_manifest_can_ask_for_more_signers_than_the_local_minimum() {
     let (first, second) = (key("ci"), key("maintainer"));
     let mut fixture = fixture_with_min_signatures(1, &[&first, &second]);
-    let mut strict = manifest("0.2.0", NEW_BINARY);
+    let mut strict = manifest("99.0.0", NEW_BINARY);
     strict.threshold = 2;
     fixture.serve(signed_by(&strict, &[&first]), NEW_BINARY);
     assert!(fixture.run(Action::Report).is_err());
@@ -1297,7 +1297,7 @@ fn verify_enforces_expiry_channel_and_the_minimum_version() {
 
 #[test]
 fn verify_takes_the_minimum_number_of_signers_from_the_flag_or_the_configuration() {
-    let release = fresh_release("0.2.0");
+    let release = fresh_release("99.0.0");
     assert!(verify_release(&release, &["--min-signatures", "1"]).is_ok());
     assert!(matches!(
         verify_release(&release, &["--min-signatures", "2"]),
