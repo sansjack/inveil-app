@@ -183,7 +183,7 @@ jobs:
             key_args+=(--pinned-key "$entry")
           done
           "$INSTALLED_BINARY" verify --role update "${key_args[@]}" --min-signatures "$REQUIRED_SIGNATURES" \
-            --channel "$CHANNEL" --artifact "$INSTALLED_BINARY" "dl/$MANIFEST"
+            --channel "$CHANNEL" --artifact "dl/$BINARY_NAME" "dl/$MANIFEST"
 
       - name: The installed binary is the published binary
         run: |
