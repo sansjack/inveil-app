@@ -272,13 +272,16 @@ impl Setup {
         self
     }
 
+    // Paths go in TOML single-quoted strings: Windows backslashes are escapes in double-quoted ones. The log file is set
+    // because a process with no console otherwise logs to the real per-user log path.
     fn render(&self, directory: &Path, port: u16) -> String {
         let mut config = format!(
-            "{}upstream = \"{}\"\nnotify = false\nstate_keychain = false\ndata_dir = '{}'\n[listen]\nport = {port}\nbrowser_port = {}\n[update]\nmode = \"off\"\n[logging]\naudit_file = '{}'\n",
+            "{}upstream = \"{}\"\nnotify = false\nstate_keychain = false\ndata_dir = '{}'\n[listen]\nport = {port}\nbrowser_port = {}\n[update]\nmode = \"off\"\n[logging]\nfile = '{}'\naudit_file = '{}'\n",
             self.top_level,
             self.upstream,
             directory.join("data").display(),
             free_port(),
+            directory.join("inveil.log").display(),
             directory.join("audit.jsonl").display(),
         );
         if let Some((url, key)) = &self.backend {
