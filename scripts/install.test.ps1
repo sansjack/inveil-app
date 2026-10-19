@@ -301,3 +301,5 @@ if ($script:failures -gt 0) {
     exit 1
 }
 Write-Output 'all install.ps1 tests passed'
+# The last installer call fails on purpose; without this its exit code would become the script's.
+exit 0

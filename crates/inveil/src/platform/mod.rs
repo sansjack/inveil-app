@@ -44,6 +44,7 @@ pub use windows::program_data_dir;
 /// Common name of the browser CA; the trust stores identify the certificate by it when removing.
 pub const CA_NAME: &str = "Inveil Browser CA";
 /// Name of the service in launchd, systemd and the Windows task scheduler.
+#[cfg_attr(windows, allow(dead_code))]
 pub const SERVICE_LABEL: &str = "com.inveil.proxy";
 #[cfg(test)]
 pub const SANDBOX_VARIABLE: &str = "INVEIL_PLATFORM_SANDBOX";

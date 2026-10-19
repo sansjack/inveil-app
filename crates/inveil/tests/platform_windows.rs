@@ -1,6 +1,8 @@
 //! Windows-only checks that need the real `icacls`. They write only to a temp file.
 #![cfg(windows)]
 
+// Only `write_private_file` is exercised here; the rest of the module is used by the binary.
+#[allow(dead_code, unused_imports)]
 #[path = "../src/platform/mod.rs"]
 mod platform;
 

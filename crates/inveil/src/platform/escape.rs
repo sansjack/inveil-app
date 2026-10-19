@@ -7,10 +7,12 @@ use base64::Engine;
 const UTF16_LE_BYTE_ORDER_MARK: [u8; 2] = [0xFF, 0xFE];
 
 /// POSIX shell single-quoting: the value is always one word and nothing inside it is interpreted.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(super) fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(super) fn shell_join(arguments: &[String]) -> String {
     arguments
         .iter()

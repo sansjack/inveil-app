@@ -30,6 +30,8 @@ allow = [
     "Zlib",
     "MPL-2.0",
     "CC0-1.0",
+    # webpki-roots (the bundled Mozilla root list, pulled in by hyper-rustls and tokio-tungstenite) is data, not code.
+    "CDLA-Permissive-2.0",
     # ring and aws-lc-rs (BoringSSL lineage) carry this alongside ISC; it is a permissive attribution licence.
     "OpenSSL",
 ]

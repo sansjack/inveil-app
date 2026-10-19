@@ -232,7 +232,7 @@ Numbers are filled in at release time, not hand-edited between releases.
 | Scan throughput, 1 MiB request | <!-- release-numbers: benchmark MB/s --> pending |
 | Added latency p50 / p99 | <!-- release-numbers: benchmark latency --> pending |
 | Line coverage | <!-- release-numbers: coverage --> pending |
-| Minimum supported Rust version | 1.85 |
+| Minimum supported Rust version | 1.89 |
 | `cargo deny` status | see the CI badge |
 | SBOM | attached to each release |
 

@@ -13,7 +13,7 @@ To report a vulnerability, do not open an issue; follow [SECURITY.md](SECURITY.m
 
 ## Development setup
 
-Install the Rust toolchain with [rustup](https://rustup.rs). The exact toolchain used for releases and the components are in [`rust-toolchain.toml`](rust-toolchain.toml); `rustup` selects them for you. The minimum supported Rust version (1.85, `rust-version` in the workspace `Cargo.toml`) is checked separately by CI.
+Install the Rust toolchain with [rustup](https://rustup.rs). The exact toolchain used for releases and the components are in [`rust-toolchain.toml`](rust-toolchain.toml); `rustup` selects them for you. The minimum supported Rust version (1.89, `rust-version` in the workspace `Cargo.toml`) is checked separately by CI.
 
 | OS | Extra requirements |
 |---|---|

@@ -6,6 +6,7 @@ use super::PlatformError;
 /// The Task Scheduler maximum, so the task keeps restarting after repeated crashes.
 const RESTART_ATTEMPTS: u32 = 999;
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(super) fn launch_agent_plist(label: &str, command: &[String]) -> Result<String, PlatformError> {
     let arguments = command
         .iter()

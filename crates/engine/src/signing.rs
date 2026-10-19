@@ -233,7 +233,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Verifies at least `threshold` signatures from distinct trusted keys, then parses the payload. Two pins for the
-/// same public key count once, and only the first [`MAX_SIGNATURES`] entries are examined.
+/// same public key count once, and only the first `MAX_SIGNATURES` entries are examined.
 pub fn verify_envelope<T: DeserializeOwned>(
     role: Role,
     trust: &Trust,
