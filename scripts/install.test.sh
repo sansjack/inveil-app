@@ -164,7 +164,8 @@ run_installer() {
 # Prefix assignments on a function call leak into the caller in dash, so scoped variables go through a subshell.
 with_env() {
   (
-    # shellcheck disable=SC2163 -- $1 is a NAME=value assignment
+    # $1 is a NAME=value assignment
+    # shellcheck disable=SC2163
     export "$1"
     shift
     "$@"
@@ -329,7 +330,8 @@ if ( cd "$rendered" && UPDATE_PUBLIC_KEYS="$keys_two" MIN_SIGNATURES=2 sh "$repo
 else
   fail "render-installers"
 fi
-# shellcheck disable=SC2016 -- the backtick and dollar are literal test input
+# the backtick and dollar are literal test input
+# shellcheck disable=SC2016
 for bad in "a'b" 'a"b' 'a$b' 'a`b' 'a\b'; do
   if UPDATE_PUBLIC_KEYS="$bad" MIN_SIGNATURES=2 sh "$repo_dir/.github/scripts/render-installers.sh" "$root/render-bad" >/dev/null 2>&1; then
     fail "renderer accepted $bad"
