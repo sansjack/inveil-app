@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-19
+
 ### Fixed
 
 - A `mode = "managed"` set in the per-user file or `INVEIL_MODE` no longer re-enables local `dry_run` or refuses a local `open` failure mode on an enrolled device: only a system-wide file declaring `managed` counts as system-managed (`Config::system_managed`), so the enrolled rules apply and the ignored keys are warned about.
@@ -27,4 +29,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - macOS, Windows and Linux support.
 - Documentation, community files and release pipeline with SBOM, checksums and build provenance.
 
-[Unreleased]: https://github.com/sansjack/inveil-app/commits/main
+[Unreleased]: https://github.com/sansjack/inveil-app/compare/v0.2.0...main
+[0.2.0]: https://github.com/sansjack/inveil-app/releases/tag/v0.2.0
