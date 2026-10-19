@@ -1254,20 +1254,20 @@ fn fresh_release(version: &str) -> UpdateManifest {
 
 #[test]
 fn verify_enforces_expiry_channel_and_the_minimum_version() {
-    let report = verify_release(&fresh_release("0.2.0"), &[]).unwrap();
+    let report = verify_release(&fresh_release("99.0.0"), &[]).unwrap();
     assert!(
-        report.contains("version: 0.2.0 (newer than this binary)"),
+        report.contains("version: 99.0.0 (newer than this binary)"),
         "{report}"
     );
 
-    let mut expired = fresh_release("0.2.0");
+    let mut expired = fresh_release("99.0.0");
     expired.expires_at = unix_seconds() - 1;
     assert!(matches!(
         verify_release(&expired, &[]),
         Err(UpdateError::Manifest(ManifestError::Expired { .. }))
     ));
 
-    let mut beta = fresh_release("0.2.0");
+    let mut beta = fresh_release("99.0.0");
     beta.channel = "beta".to_string();
     assert!(matches!(
         verify_release(&beta, &[]),
@@ -1280,8 +1280,8 @@ fn verify_enforces_expiry_channel_and_the_minimum_version() {
         Err(UpdateError::Manifest(ManifestError::Downgrade { .. }))
     ));
 
-    let mut impossible = fresh_release("0.2.0");
-    impossible.min_supported = Some("0.3.0".to_string());
+    let mut impossible = fresh_release("99.0.0");
+    impossible.min_supported = Some("100.0.0".to_string());
     assert!(matches!(
         verify_release(&impossible, &[]),
         Err(UpdateError::Manifest(
@@ -1289,8 +1289,8 @@ fn verify_enforces_expiry_channel_and_the_minimum_version() {
         ))
     ));
 
-    let mut required = fresh_release("0.3.0");
-    required.min_supported = Some("0.2.0".to_string());
+    let mut required = fresh_release("100.0.0");
+    required.min_supported = Some("99.0.0".to_string());
     let report = verify_release(&required, &[]).unwrap();
     assert!(report.contains("(required)"), "{report}");
 }

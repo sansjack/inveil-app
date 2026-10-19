@@ -93,9 +93,9 @@ What the installers do and do not guarantee is stated in the header of each scri
 
 ## Cutting a release
 
-1. Update `CHANGELOG.md`: move `Unreleased` entries under the new version and date.
-2. Set the workspace version in `Cargo.toml` and commit.
-3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z` (you do this manually).
+1. On an up-to-date `main` with a clean tree, run `scripts/release.sh minor` (or `patch`, `major`, an exact `X.Y.Z`, or `X.Y.Z-rc.N` for the beta channel). It sets the workspace version in `Cargo.toml`, moves the `CHANGELOG.md` `Unreleased` entries under the new version and date (stable only), runs `cargo test --workspace --locked`, then commits `chore: release vX.Y.Z` and creates the annotated tag locally. It pushes nothing.
+2. Review with `git show vX.Y.Z`. To abandon it: `git tag -d vX.Y.Z && git reset --hard HEAD~1`.
+3. Push both (you do this manually): `git push origin main && git push origin vX.Y.Z`.
 4. Approve the `release-platform-signing` and `release-manifest-signing` environments when asked.
 5. Check the draft release: the assets, the verify-download jobs on all three operating systems (their final threshold step fails until step 6 is done), and the provenance attestation.
 6. Co-sign offline. On a machine you trust, with the hardware key: confirm the binary hashes yourself (rebuild reproducibly, or `gh attestation verify <file> -R <org>/inveil-app`; do not trust the CI run's own report), download `update-manifest*.json.sig`, run `inveil sign --role update --co-sign`, check the result with `inveil verify --role update --min-signatures 2`, and upload it with `gh release upload <tag> --clobber`. The provenance attestation covers the CI-signed file, not the co-signed one.
