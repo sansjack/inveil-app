@@ -172,7 +172,10 @@ jobs:
           $arguments = @('-NoEnroll', '-Version', $env:VERSION)
           if ($env:CHANNEL -eq 'beta') { $arguments += @('-Channel', 'beta') }
           $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/install.ps1"
-          & ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing $url).Content)) @arguments
+          $response = Invoke-WebRequest -UseBasicParsing $url
+          # GitHub serves release assets as application/octet-stream, so Content is a byte array, not text.
+          $script = if ($response.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($response.Content) } else { $response.Content }
+          & ([scriptblock]::Create($script)) @arguments
           & (Join-Path $installDir 'inveil.exe') --version
           "INSTALLED_BINARY=$(Join-Path $installDir 'inveil.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 

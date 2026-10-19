@@ -31,9 +31,12 @@ Limits, stated plainly:
   * This script has been written against the same logic as install.sh but could not be executed on Windows while
     it was written; scripts/install.test.ps1 must be run on a Windows runner (CI does this).
 
-Run it as a script block so you can pass parameters; nothing but this script is ever evaluated:
+Run it as a script block so you can pass parameters; nothing but this script is ever evaluated. GitHub serves release
+assets as application/octet-stream, so .Content is a byte array and has to be decoded first (a host that serves the
+script as text already returns a string; leave out the GetString there):
 
-    & ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing https://github.com/sansjack/inveil-app/releases/latest/download/install.ps1).Content)) -NoEnroll
+    $script = [Text.Encoding]::UTF8.GetString((Invoke-WebRequest -UseBasicParsing https://github.com/sansjack/inveil-app/releases/latest/download/install.ps1).Content)
+    & ([scriptblock]::Create($script)) -NoEnroll
 
 Enrollment: set the one-time token in $env:INVEIL_ENROLL_TOKEN and pass -Enroll. The token is read, removed from
 the environment immediately, and handed to `inveil enroll --bundle -` on standard input. It is never on a command
