@@ -192,6 +192,11 @@ jobs:
       - name: The installed binary is the published binary
         run: |
           if command -v sha256sum > /dev/null; then hash=sha256sum; else hash="shasum -a 256"; fi
-          installed=$($hash "$INSTALLED_BINARY" | cut -d' ' -f1)
-          published=$($hash "dl/$BINARY_NAME" | cut -d' ' -f1)
-          [ "$installed" = "$published" ] || { echo "::error::installed binary differs from the published $BINARY_NAME"; exit 1; }
+          # Read through stdin: GNU sha256sum prefixes the digest with a backslash when the file name has one, as
+          # Windows paths do.
+          installed=$($hash < "$INSTALLED_BINARY" | cut -d' ' -f1)
+          published=$($hash < "dl/$BINARY_NAME" | cut -d' ' -f1)
+          [ "$installed" = "$published" ] || {
+            echo "::error::installed binary differs from the published $BINARY_NAME (installed $installed, published $published)"
+            exit 1
+          }
