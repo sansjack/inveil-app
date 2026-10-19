@@ -16,6 +16,9 @@
   <a href="CONTRIBUTING.md"><img alt="Contributions welcome" src="https://img.shields.io/badge/contributions-welcome-brightgreen"></a>
 </p>
 
+> [!WARNING]
+> **Alpha software.** This repo is still in alpha. The detector engine is less than 10% complete and will be refactored, so do not rely on Inveil to catch sensitive data yet. Expect breaking changes.
+
 Inveil is a local proxy that sits between your AI tools and their providers. It reads the chat requests those tools send, looks for sensitive data (card numbers, national ids, IBANs and anything you add), and blocks or redacts it before the request leaves your machine.
 
 It is open source and does not come with a hosted service. You bring your own backend: the smallest one is a signed JSON file on a static web server.
