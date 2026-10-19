@@ -29,7 +29,7 @@ for candidate in "${INVEIL_OPENSSL:-}" /opt/homebrew/opt/openssl@3/bin/openssl /
   fi
 done
 [ -n "${openssl_bin:-}" ] || { echo "install.test.sh needs OpenSSL 3 (set INVEIL_OPENSSL)"; exit 1; }
-export INVEIL_OPENSSL=$openssl_bin
+export INVEIL_OPENSSL="$openssl_bin"
 
 case $(uname -s) in
   Darwin) os=macos ;;
@@ -148,7 +148,7 @@ make_release() {
 }
 
 export INVEIL_INSTALL_TESTING=1
-export INVEIL_UPDATE_PUBLIC_KEYS=$keys_two
+export INVEIL_UPDATE_PUBLIC_KEYS="$keys_two"
 export FAKE_MARKER="$root/marker"
 export FAKE_INVEIL_LOG="$root/log"
 : >"$FAKE_MARKER"
@@ -164,6 +164,7 @@ run_installer() {
 # Prefix assignments on a function call leak into the caller in dash, so scoped variables go through a subshell.
 with_env() {
   (
+    # shellcheck disable=SC2163 -- $1 is a NAME=value assignment
     export "$1"
     shift
     "$@"
@@ -328,6 +329,7 @@ if ( cd "$rendered" && UPDATE_PUBLIC_KEYS="$keys_two" MIN_SIGNATURES=2 sh "$repo
 else
   fail "render-installers"
 fi
+# shellcheck disable=SC2016 -- the backtick and dollar are literal test input
 for bad in "a'b" 'a"b' 'a$b' 'a`b' 'a\b'; do
   if UPDATE_PUBLIC_KEYS="$bad" MIN_SIGNATURES=2 sh "$repo_dir/.github/scripts/render-installers.sh" "$root/render-bad" >/dev/null 2>&1; then
     fail "renderer accepted $bad"
@@ -339,7 +341,7 @@ else
   pass "renderer rejects quotes, backslashes, dollar, backtick and newlines"
 fi
 
-env -u INVEIL_INSTALL_TESTING INVEIL_UPDATE_PUBLIC_KEYS=$keys_two INVEIL_INSTALL_BASE_URL=$base INVEIL_INSTALL_DIR="$root/ignored/bin" \
+env -u INVEIL_INSTALL_TESTING INVEIL_UPDATE_PUBLIC_KEYS="$keys_two" INVEIL_INSTALL_BASE_URL="$base" INVEIL_INSTALL_DIR="$root/ignored/bin" \
   sh "$rendered/install.sh" --dry-run >"$root/ignored.out" 2>&1 || true
 if grep -q 'download https://github.com/' "$root/ignored.out" && ! grep -q "$fixture" "$root/ignored.out"; then
   pass "ignores INVEIL_INSTALL_BASE_URL unless INVEIL_INSTALL_TESTING=1"
@@ -485,7 +487,7 @@ else
 fi
 
 install_dir="$root/refuse/bin"
-if env -u INVEIL_INSTALL_TESTING INVEIL_INSTALL_BASE_URL=$base INVEIL_INSTALL_DIR="$install_dir" sh "$rendered/install.sh" >/dev/null 2>&1; then
+if env -u INVEIL_INSTALL_TESTING INVEIL_INSTALL_BASE_URL="$base" INVEIL_INSTALL_DIR="$install_dir" sh "$rendered/install.sh" >/dev/null 2>&1; then
   fail "file:// accepted without testing mode"
 else
   pass "refuses file:// outside testing mode"
@@ -495,7 +497,7 @@ if INVEIL_INSTALL_BASE_URL=http://example.com/releases INVEIL_INSTALL_DIR="$inst
 else
   pass "refuses plain http"
 fi
-if INVEIL_UPDATE_PUBLIC_KEYS= INVEIL_INSTALL_BASE_URL=$base INVEIL_INSTALL_DIR="$install_dir" sh "$installer" >/dev/null 2>&1; then
+if INVEIL_UPDATE_PUBLIC_KEYS='' INVEIL_INSTALL_BASE_URL="$base" INVEIL_INSTALL_DIR="$install_dir" sh "$installer" >/dev/null 2>&1; then
   fail "installed without pinned update keys"
 else
   pass "refuses to run without pinned update keys"

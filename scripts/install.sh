@@ -470,7 +470,7 @@ verify_manifest() {
     signer_id=$(json_field "$WORK_DIR/envelope.flat" "signatures.$index.key_id")
     signature=$(json_field "$WORK_DIR/envelope.flat" "signatures.$index.signature")
     index=$((index + 1))
-    [ -n "$signer_id" ] && [ -n "$signature" ] || continue
+    if [ -z "$signer_id" ] || [ -z "$signature" ]; then continue; fi
     case $signature in *[!A-Za-z0-9+/=]*) continue ;; esac
     for entry in $UPDATE_KEYS; do
       [ "${entry%%=*}" = "$signer_id" ] || continue
