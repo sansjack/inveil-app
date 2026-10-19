@@ -5,7 +5,7 @@ mod load;
 
 pub use load::{load, Override, Sources};
 
-use contract::{FailMode, FailureModes};
+use contract::{FailMode, FailureModes, UpdatePolicy};
 use engine::signing::{PinnedKey, Trust, VerifyError};
 use engine::LocalSettings;
 use serde::{Deserialize, Serialize};
@@ -156,15 +156,7 @@ pub struct LoggingConfig {
     pub audit_file: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum UpdateMode {
-    Off,
-    #[default]
-    Notify,
-    Download,
-    Install,
-}
+pub use contract::UpdateMode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
@@ -189,6 +181,16 @@ impl UpdateConfig {
                     .min(DEFAULT_MIN_SIGNATURES_WITH_ROTATION)
             })
             .max(1)
+    }
+
+    /// The local settings with the administrator's signed choices laid over them. Only the mode and interval can come
+    /// from the signed policy; the feed, its channel and the keys that must sign it are always local.
+    pub fn with_policy(&self, signed: &UpdatePolicy) -> Self {
+        Self {
+            mode: signed.mode.unwrap_or(self.mode),
+            check_hours: signed.check_hours.unwrap_or(self.check_hours),
+            ..self.clone()
+        }
     }
 
     fn distinct_pinned_keys(&self) -> usize {
@@ -734,6 +736,28 @@ mod tests {
             ..pinned_update_keys(2)
         };
         assert_eq!(explicit.required_signatures(), 1);
+    }
+
+    #[test]
+    fn the_signed_update_policy_replaces_the_local_mode_and_interval_but_never_the_trust_settings() {
+        let local = UpdateConfig {
+            feed_url: Some("https://feed.example/manifest.json.sig".into()),
+            ..pinned_update_keys(2)
+        };
+        let signed = UpdatePolicy {
+            mode: Some(UpdateMode::Install),
+            check_hours: Some(4),
+        };
+        let merged = local.with_policy(&signed);
+        assert_eq!(merged.mode, UpdateMode::Install);
+        assert_eq!(merged.check_hours, 4);
+        assert_eq!(merged.feed_url, local.feed_url);
+        assert_eq!(merged.channel, local.channel);
+        assert_eq!(merged.pinned_keys.len(), 2);
+
+        let silent = local.with_policy(&UpdatePolicy::default());
+        assert_eq!(silent.mode, UpdateMode::Notify);
+        assert_eq!(silent.check_hours, local.check_hours);
     }
 
     #[test]

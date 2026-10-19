@@ -4,7 +4,7 @@
 use crate::backend::VerifiedSnapshot;
 use crate::config::Config;
 use crate::proxy::browser_ca;
-use contract::Snapshot;
+use contract::{Snapshot, UpdatePolicy};
 use engine::{effective_config_hash, merge_settings, Effective, MergeError, PatternError, Policy};
 use std::path::PathBuf;
 
@@ -45,6 +45,8 @@ pub struct ActivePolicy {
     pub origin: PolicyOrigin,
     /// The person asked for debug logging but the signed settings do not allow it.
     pub debug_forbidden: bool,
+    /// The administrator's update choices, read by the update loop on every check.
+    pub update: UpdatePolicy,
 }
 
 impl ActivePolicy {
@@ -111,6 +113,7 @@ impl PolicyBuilder {
             expires_at,
             origin,
             debug_forbidden,
+            update: snapshot.settings.update.clone(),
         })
     }
 }

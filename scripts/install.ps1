@@ -341,7 +341,7 @@ function Invoke-InveilInstall {
     }
     $baseUrl = $baseUrl.TrimEnd('/')
     # The updater's feed is always the https GitHub URL, even when tests redirect the download location.
-    $feedUrl = if ($Channel -eq 'beta') { "$GitHubReleasesUrl/download/v$releaseVersion/$manifestName" } else { "$GitHubReleasesUrl/latest/download/$manifestName" }
+    $feedUrl = if ($Channel -eq 'beta') { "$GitHubReleasesUrl/download/beta/$manifestName" } else { "$GitHubReleasesUrl/latest/download/$manifestName" }
 
     $backendUrlValue = $BackendUrl
     if (-not $backendUrlValue -and -not (Test-Placeholder $DefaultBackendUrl)) { $backendUrlValue = $DefaultBackendUrl }
@@ -532,7 +532,7 @@ function Invoke-InveilInstall {
                     pinned_keys      = @(& $toEntries $backendKeys)
                     enrollment_token = $enrollToken
                     auth             = @{ mode = 'enrolled' }
-                    update           = @{ keys = @(& $toEntries $updateKeys); min_signatures = $minSignatures; feed_url = $feedUrl }
+                    update           = @{ keys = @(& $toEntries $updateKeys); min_signatures = $minSignatures; feed_url = $feedUrl; mode = 'install' }
                 } | ConvertTo-Json -Depth 5 -Compress
                 $bundleBody | & $target enroll --bundle -
                 if ($LASTEXITCODE -ne 0) { throw 'inveil enroll failed (this needs an inveil that reads --bundle - from standard input)' }

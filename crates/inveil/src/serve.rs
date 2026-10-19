@@ -61,7 +61,7 @@ pub async fn run(config: Config) -> Result<(), AppError> {
     }
 
     if !offline {
-        spawn_update_checks(config.clone());
+        spawn_update_checks(config.clone(), active.clone());
     }
     let usage = start_usage(&config, offline, credentials, &active)?;
     let audit = AuditLog::open(config.logging.audit_file.as_deref()).map_err(|source| {
@@ -92,17 +92,24 @@ pub async fn run(config: Config) -> Result<(), AppError> {
 }
 
 /// Checks the update feed every `update.check_hours`. What happens next (report, download, install) follows
-/// `update.mode`; this only keeps the clock.
-fn spawn_update_checks(config: Arc<Config>) {
-    if config.update.mode == UpdateMode::Off || config.update.feed_url.is_none() {
+/// `update.mode`; this only keeps the clock. Mode and interval are re-read from the live policy on every tick, so an
+/// administrator's signed choice applies without touching the local file or restarting.
+fn spawn_update_checks(config: Arc<Config>, active: watch::Receiver<Arc<ActivePolicy>>) {
+    if config.update.feed_url.is_none() {
         return;
     }
     tokio::spawn(async move {
         let mut last_checked: Option<SystemTime> = None;
         loop {
-            if update::check_due(last_checked, config.update.check_hours) {
+            let settings = config.update.with_policy(&active.borrow().update);
+            if settings.mode != UpdateMode::Off
+                && update::check_due(last_checked, settings.check_hours)
+            {
                 last_checked = Some(SystemTime::now());
-                let checked = config.clone();
+                let checked = Config {
+                    update: settings,
+                    ..(*config).clone()
+                };
                 match tokio::task::spawn_blocking(move || update::run_scheduled_update(&checked))
                     .await
                 {

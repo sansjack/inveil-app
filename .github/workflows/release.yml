@@ -842,6 +842,30 @@ jobs:
     with:
       tag: ${{ needs.preflight.outputs.tag }}
 
+  roll-beta-feed:
+    name: Roll the beta update feed
+    needs: [preflight, verify-published]
+    if: ${{ needs.preflight.outputs.prerelease == 'true' }}
+    runs-on: ubuntu-latest
+    # GitHub has no stable URL for the newest pre-release, so beta clients read releases/download/beta/<manifest>.
+    # Only the already signed and verified envelope is copied; its artifact URLs still name the versioned release,
+    # and clients refuse a manifest older than the newest they have seen, so this release holds no trust of its own.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.preflight.outputs.tag }}
+      MANIFEST: ${{ needs.preflight.outputs.manifest }}
+    steps:
+      - name: Copy the manifest to the beta release
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$MANIFEST.sig" --dir feed
+          if ! gh release view beta --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create beta --repo "$GITHUB_REPOSITORY" --target main --prerelease --latest=false \
+              --title "Beta update feed" --notes "Holds the newest beta update manifest. Download releases from their vX.Y.Z-rc.N tags."
+          fi
+          gh release upload beta "feed/$MANIFEST.sig" --repo "$GITHUB_REPOSITORY" --clobber
+
   unpublish-on-failure:
     name: Back to draft (published release failed verification)
     needs: [preflight, publish, verify-published]

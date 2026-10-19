@@ -1,15 +1,17 @@
 //! `inveil install | uninstall | status`: the per-user background service, and pointing local tools at the proxy.
 use super::tool_settings::{check_entry, SettingsFile};
 use super::{browser, claude_settings};
-use crate::backend::{BackendError, CredentialProvider};
+use crate::backend::{self, BackendError, CredentialProvider};
 use crate::config::{AuthMode, Config};
 use crate::error::AppError;
 use crate::platform;
 use crate::runtime::Runtime;
+use crate::trust_state::StateStore;
+use crate::update;
 use contract::Via;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -282,12 +284,104 @@ pub fn uninstall(config: Config) -> Result<String, AppError> {
             claude_settings::managed_path().display()
         ))
     };
-    let removed = "inveil removed. Local tools talk to their APIs directly again.".to_string();
-    let notes: Vec<String> = [browser_notes, managed_note, Some(removed)]
-        .into_iter()
-        .flatten()
-        .collect();
+    let mut notes: Vec<String> = [browser_notes, managed_note].into_iter().flatten().collect();
+    notes.extend(remove_keychain_items(&runtime));
+    notes.extend(remove_local_files(&runtime)?);
+    notes.push("inveil removed. Local tools talk to their APIs directly again.".to_string());
     Ok(notes.join("\n"))
+}
+
+/// The backend credentials and the rollback anchors of the state files. A keychain that cannot be reached does not
+/// stop the uninstall, but every item left behind is named so it can be deleted by hand.
+fn remove_keychain_items(runtime: &Runtime) -> Vec<String> {
+    let mut notes = vec![];
+    if runtime.config.backend.url.is_some() {
+        match backend::forget_all(&runtime.config) {
+            Ok(true) => notes.push("Removed the stored credentials from the OS keychain.".to_string()),
+            Ok(false) => {}
+            Err(error) => notes.push(format!(
+                "Could not remove the stored credentials from the OS keychain: {error}"
+            )),
+        }
+    }
+    for file_name in [backend::SNAPSHOT_STATE_FILE, update::STATE_FILE_NAME] {
+        if let Err(error) = StateStore::remove_anchor(&runtime.data_dir, file_name) {
+            notes.push(format!(
+                "Could not remove the keychain anchor of {file_name}: {error}"
+            ));
+        }
+    }
+    notes
+}
+
+/// The data directory (configuration, enrollment, cached rules, state, logs and the service's copy of the binary),
+/// the Linux log directory, and the binary the install script put on the PATH when this is that binary.
+fn remove_local_files(runtime: &Runtime) -> Result<Vec<String>, AppError> {
+    let mut notes = vec![];
+    let data_dir = platform::data_dir()?;
+    remove_directory(&data_dir)?;
+    if runtime.data_dir != data_dir && runtime.data_dir.exists() {
+        notes.push(format!(
+            "Left the configured data_dir {} in place; delete it yourself if nothing else uses it.",
+            runtime.data_dir.display()
+        ));
+    }
+    let log = platform::default_log_path()?;
+    remove_file(&log)?;
+    // ponytail: only an empty log directory is removed, so a shared XDG state directory is never touched.
+    if let Some(log_directory) = log.parent().filter(|directory| *directory != data_dir) {
+        std::fs::remove_dir(log_directory).ok();
+    }
+
+    let executable = std::env::current_exe().and_then(std::fs::canonicalize);
+    let bin_dir = platform::installer_bin_dir().and_then(|directory| {
+        std::fs::canonicalize(&directory).map_err(|source| platform::PlatformError::Io {
+            path: directory.display().to_string(),
+            source,
+        })
+    });
+    let (Ok(executable), Ok(bin_dir)) = (executable, bin_dir) else {
+        return Ok(notes);
+    };
+    if executable.parent() != Some(bin_dir.as_path()) {
+        return Ok(notes);
+    }
+    for suffix in [".prev", ".new"] {
+        let mut sibling = executable.clone().into_os_string();
+        sibling.push(suffix);
+        remove_file(&PathBuf::from(sibling))?;
+    }
+    if cfg!(windows) {
+        // A running executable cannot be deleted on Windows.
+        notes.push(format!(
+            "Delete {} once this command has exited.",
+            executable.display()
+        ));
+        return Ok(notes);
+    }
+    remove_file(&executable)?;
+    notes.push(format!("Removed {}.", executable.display()));
+    Ok(notes)
+}
+
+fn remove_directory(path: &Path) -> Result<(), AppError> {
+    match std::fs::remove_dir_all(path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(AppError::WriteFile {
+            path: path.to_path_buf(),
+            source: error,
+        }),
+        _ => Ok(()),
+    }
+}
+
+fn remove_file(path: &Path) -> Result<(), AppError> {
+    match std::fs::remove_file(path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(AppError::WriteFile {
+            path: path.to_path_buf(),
+            source: error,
+        }),
+        _ => Ok(()),
+    }
 }
 
 pub fn status(config: &Config) -> Result<String, AppError> {

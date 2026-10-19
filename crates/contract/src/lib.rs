@@ -17,7 +17,8 @@ pub use envelope::{Delegation, SignatureEntry, SignedEnvelope};
 pub use manifest::{Artifact, UpdateManifest, MANIFEST_SCHEMA};
 pub use snapshot::{
     Action, Endpoint, FailMode, FailureCondition, FailureModes, Format, Host, Match, PiiRule,
-    Settings, Snapshot, Tool, UsageReporting, Validator, Via, SNAPSHOT_SCHEMA,
+    Settings, Snapshot, Tool, UpdateMode, UpdatePolicy, UsageReporting, Validator, Via,
+    SNAPSHOT_SCHEMA,
 };
 pub use usage::{Billing, ClientInfo, UsageBatch, UsageEvent, MAX_USAGE_BATCH};
 
@@ -29,6 +30,12 @@ mod tests {
     fn snapshots_reject_unknown_fields() {
         let json = r#"{"schema":1,"version":1,"issued_at":0,"expires_at":1,"pii":[],"extra":true}"#;
         assert!(serde_json::from_str::<Snapshot>(json).is_err());
+    }
+
+    #[test]
+    fn an_empty_update_policy_is_not_serialized_so_older_clients_still_accept_the_snapshot() {
+        let settings = serde_json::to_value(Settings::default()).unwrap();
+        assert!(settings.get("update").is_none());
     }
 
     #[test]

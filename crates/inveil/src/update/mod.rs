@@ -39,7 +39,7 @@ pub use apply::remove_replaced;
 pub use sign::{run_keygen, run_sign, run_verify};
 
 const SECONDS_PER_HOUR: u64 = 3600;
-const STATE_FILE_NAME: &str = "update-state.json";
+pub const STATE_FILE_NAME: &str = "update-state.json";
 /// Exit status of a service that replaced its own binary and needs the supervisor to start it again. Non-zero, so
 /// `Restart=on-failure` and the Task Scheduler's restart-on-failure both treat it as a reason to restart.
 pub const EXIT_RESTART_FOR_UPDATE: u8 = 75;

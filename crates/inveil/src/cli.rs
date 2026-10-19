@@ -29,7 +29,8 @@ Commands:
   run <command...>    Run a command with its HTTPS traffic routed through the browser proxy
   install [--managed] Install the background service and point local tools at the proxy
                       (--managed also writes Claude Code's machine-wide managed settings; needs admin rights)
-  uninstall           Remove the service, browser protection and the Claude Code setting
+  uninstall           Remove everything: the service, browser protection, tool settings, keychain
+                      credentials, enrollment, cached rules, logs and the installed binary
   status              Say whether the proxy is running
   refetch             Fetch your organisation's latest rules now
   doctor [--json]     Say, per enabled tool, whether it is covered (exit 1 if one is not)

@@ -180,6 +180,24 @@ pub fn install_exe_path() -> Result<PathBuf, PlatformError> {
     Ok(data_dir()?.join(file_name))
 }
 
+/// Where `install.sh` and `install.ps1` put the binary the user runs. Must match their `INSTALL_DIR` defaults.
+/// Unused by the platform integration tests, which include this module by path.
+#[cfg_attr(test, allow(dead_code))]
+pub fn installer_bin_dir() -> Result<PathBuf, PlatformError> {
+    if let Some(directory) = env::var_os("INVEIL_INSTALL_DIR") {
+        return Ok(PathBuf::from(directory));
+    }
+    if cfg!(windows) {
+        let local_app_data =
+            env::var_os("LOCALAPPDATA").ok_or(PlatformError::MissingEnvironment("LOCALAPPDATA"))?;
+        return Ok(PathBuf::from(local_app_data).join("Programs").join(APP_DIR_NAME));
+    }
+    match env::var_os("XDG_BIN_HOME") {
+        Some(directory) => Ok(PathBuf::from(directory)),
+        None => Ok(home_dir()?.join(".local/bin")),
+    }
+}
+
 /// Records this process id so the service can be stopped by PID rather than by image name.
 pub fn write_pid_file() -> Result<(), PlatformError> {
     let directory = data_dir()?;

@@ -419,6 +419,10 @@
             "policy_expired": null,
             "service_down": null
           }
+        },
+        "update": {
+          "description": "Left out when empty: clients older than 0.2.2 reject a snapshot that carries this key.",
+          "$ref": "#/$defs/UpdatePolicy"
         }
       },
       "additionalProperties": false
@@ -521,6 +525,55 @@
           "description": "Block the traffic.",
           "type": "string",
           "const": "closed"
+        }
+      ]
+    },
+    "UpdatePolicy": {
+      "description": "Update policy chosen by the administrator. Each value set here replaces the local one. The feed URL, channel,\npinned update keys and minimum signatures are deliberately absent: they stay local, so a backend cannot point a\nclient at a binary its pinned keys did not sign, nor at a channel its feed does not publish.",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpdateMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "check_hours": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "UpdateMode": {
+      "description": "What the client's updater does with a new release.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "off",
+            "install"
+          ]
+        },
+        {
+          "description": "Check the feed and report, never download.",
+          "type": "string",
+          "const": "notify"
+        },
+        {
+          "description": "Download and stage; `inveil update --apply` installs.",
+          "type": "string",
+          "const": "download"
         }
       ]
     }

@@ -563,7 +563,7 @@ install_binary() {
 # The update section carries the same trust settings the installer just enforced, so the 2-of-N rule also holds for
 # the in-app updater: the pinned keys, the minimum signatures and the signed feed (never an unsigned payload).
 bundle_json() {
-  printf '{"backend_url":"%s","pinned_keys":%s,"enrollment_token":"%s","auth":{"mode":"enrolled"},"update":{"keys":%s,"min_signatures":%s,"feed_url":"%s"}}\n' \
+  printf '{"backend_url":"%s","pinned_keys":%s,"enrollment_token":"%s","auth":{"mode":"enrolled"},"update":{"keys":%s,"min_signatures":%s,"feed_url":"%s","mode":"install"}}\n' \
     "$BACKEND_URL" "$(key_list_to_json "$BACKEND_KEYS")" "$ENROLL_TOKEN" "$(key_list_to_json "$UPDATE_KEYS")" \
     "$MIN_SIGNATURES_EFFECTIVE" "$FEED_URL"
 }
@@ -590,7 +590,7 @@ uninstall() {
     say "No inveil binary at $INSTALL_DIR/inveil; skipping service removal."
   fi
   rm -f "$INSTALL_DIR/inveil" "$INSTALL_DIR/inveil.prev" "$INSTALL_DIR/inveil.new"
-  say "Removed $INSTALL_DIR/inveil. Enrollment data and keychain entries are removed by 'inveil uninstall'."
+  say "Removed $INSTALL_DIR/inveil."
 }
 
 main() {
@@ -691,7 +691,8 @@ main() {
   base_url=${base_url%/}
   # The updater's feed is always the https GitHub URL, even when tests redirect the download location.
   if [ "$channel" = beta ]; then
-    FEED_URL="$GITHUB_RELEASES_URL/download/v$release_version/$MANIFEST_NAME"
+    # The release workflow copies every published beta manifest to the rolling "beta" release.
+    FEED_URL="$GITHUB_RELEASES_URL/download/beta/$MANIFEST_NAME"
   else
     FEED_URL="$GITHUB_RELEASES_URL/latest/download/$MANIFEST_NAME"
   fi

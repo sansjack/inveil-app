@@ -3,7 +3,7 @@
 use super::credentials::{save_device_credential, save_org_id};
 use super::http::{check_status, client, endpoint, read_json, unreachable};
 use super::BackendError;
-use crate::config::{AuthConfig, Config, PinnedKeyConfig};
+use crate::config::{AuthConfig, Config, PinnedKeyConfig, UpdateMode};
 use contract::{EnrollRequest, EnrollResponse};
 use serde::Deserialize;
 
@@ -29,6 +29,9 @@ pub struct BundleUpdate {
     /// Distinct update keys a manifest needs; the official bundle sets 2.
     #[serde(default)]
     pub min_signatures: Option<usize>,
+    /// Starting mode until the signed policy chooses one; the install scripts set `install`.
+    #[serde(default)]
+    pub mode: Option<UpdateMode>,
 }
 
 impl EnrollmentBundle {
@@ -65,6 +68,9 @@ impl EnrollmentBundle {
                 "min_signatures".into(),
                 toml::Value::try_from(min_signatures)?,
             );
+        }
+        if let Some(mode) = update.mode {
+            section.insert("mode".into(), toml::Value::try_from(mode)?);
         }
         Ok(())
     }
@@ -167,6 +173,16 @@ mod tests {
         );
         assert_eq!(update.check_hours, 6);
         assert_eq!(update.pinned_keys.len(), 1);
+    }
+
+    #[test]
+    fn a_bundle_update_mode_is_recorded() {
+        let bundle = r#"{
+            "backend_url": "https://b.example", "pinned_keys": [], "enrollment_token": "t",
+            "update": {"keys": [{"key_id": "u1", "public_key": "BBBB"}], "mode": "install"}
+        }"#;
+        let update = update_config_of(recorded(bundle, ""));
+        assert_eq!(update.mode, UpdateMode::Install);
     }
 
     #[test]

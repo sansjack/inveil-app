@@ -64,6 +64,21 @@ pub struct KeychainVault {
 }
 
 impl KeychainVault {
+    /// Each directory gets its own item, so two installations on one machine never see each other's counters.
+    fn anchor_of(directory: &Path, file_name: &str) -> Self {
+        let directory_digest = sha256_hex(directory.as_os_str().as_encoded_bytes());
+        Self {
+            service: format!(
+                "{}.{KEYCHAIN_SERVICE_SUFFIX}",
+                brand::KEYCHAIN_SERVICE_PREFIX
+            ),
+            user: format!(
+                "{file_name}-{}",
+                &directory_digest[..DIRECTORY_DIGEST_HEX_LEN]
+            ),
+        }
+    }
+
     fn entry(&self) -> Result<keyring::Entry, keyring::Error> {
         keyring::Entry::new(&self.service, &self.user)
     }
@@ -145,25 +160,22 @@ impl StateStore {
         Self { path, vault }
     }
 
-    /// The state file `file_name` in `directory`, anchored in the keychain when `use_keychain` is set. Each directory
-    /// gets its own keychain item, so two installations on one machine never see each other's counters.
+    /// The state file `file_name` in `directory`, anchored in the keychain when `use_keychain` is set.
     pub fn open(directory: &Path, file_name: &str, use_keychain: bool) -> Self {
         let path = directory.join(file_name);
         if !use_keychain {
             return Self::new(path, None);
         }
-        let directory_digest = sha256_hex(directory.as_os_str().as_encoded_bytes());
-        let vault = KeychainVault {
-            service: format!(
-                "{}.{KEYCHAIN_SERVICE_SUFFIX}",
-                brand::KEYCHAIN_SERVICE_PREFIX
-            ),
-            user: format!(
-                "{file_name}-{}",
-                &directory_digest[..DIRECTORY_DIGEST_HEX_LEN]
-            ),
-        };
-        Self::new(path, Some(Arc::new(vault)))
+        Self::new(path, Some(Arc::new(KeychainVault::anchor_of(directory, file_name))))
+    }
+
+    /// Deletes the keychain anchor of `file_name` in `directory`, for `inveil uninstall`. True when one was there.
+    pub fn remove_anchor(directory: &Path, file_name: &str) -> Result<bool, keyring::Error> {
+        match KeychainVault::anchor_of(directory, file_name).entry()?.delete_credential() {
+            Ok(()) => Ok(true),
+            Err(keyring::Error::NoEntry) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 
     fn recovery(&self) -> String {

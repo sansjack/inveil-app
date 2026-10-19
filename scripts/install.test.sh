@@ -431,6 +431,11 @@ if printf '%s' "$bundle_body" | grep -q '"feed_url":"https://[^"]*\.json\.sig"';
 else
   fail "bundle feed_url: $bundle_body"
 fi
+if printf '%s' "$bundle_body" | grep -q '"mode":"install"'; then
+  pass "the enrollment bundle starts the updater in install mode"
+else
+  fail "bundle update mode: $bundle_body"
+fi
 if printf '%s' "$bundle_body" | grep -q '"update":{"keys":\[{"key_id":"alpha"'; then
   pass "the enrollment bundle still pins the update keys"
 else

@@ -11,6 +11,8 @@ The updater only installs a binary that a pinned key signed. It is conservative 
 | `download` | Also download and verify. Install is a manual step. |
 | `install` | Also apply, with automatic rollback. |
 
+Devices enrolled through `install.sh` or `install.ps1` start in `install` mode. The administrator can choose the mode and interval for every device in the signed snapshot (`settings.update.mode`, `settings.update.check_hours`); a value set there replaces the local one in the running service, without a restart. The feed URL, channel, pinned update keys and `min_signatures` never come from the backend: they stay in the local file, so a compromised backend cannot steer a client to a binary its pinned keys did not sign. Clients older than 0.2.2 reject a snapshot that carries `settings.update`, so send it only once the fleet is on 0.2.2 or later. `inveil update` run by hand reads the local file only.
+
 Commands: `inveil update --check` reports without changing anything; `inveil update` follows `update.mode`; `inveil verify <manifest>` checks a manifest against `update.pinned_keys` (the default role is `update`; use `--role policy` for a rules file). For an update manifest `verify` applies the same checks as an install: signatures, expiry, channel (`--channel` overrides `update.channel`), schema, `min_supported`, and that it is not older than the running binary. `--min-signatures N` overrides `update.min_signatures`, and `--artifact <binary>` also compares the file with the signed hash and size.
 
 ## Flow

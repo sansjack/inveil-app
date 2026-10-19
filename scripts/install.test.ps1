@@ -259,6 +259,7 @@ esac
     $bundle = ($bodyLine -replace '^bundle-body ', '') | ConvertFrom-Json
     Assert-Test 'the enrollment bundle carries min_signatures >= 2 by default' ([int]$bundle.update.min_signatures -ge 2)
     Assert-Test 'the enrollment bundle carries the signed feed_url (.json.sig)' ("$($bundle.update.feed_url)" -match '^https://.+\.json\.sig$')
+    Assert-Test 'the enrollment bundle starts the updater in install mode' ("$($bundle.update.mode)" -eq 'install')
     Assert-Test 'the enrollment bundle still pins the update keys' (@($bundle.update.keys).Count -eq 2)
     Assert-Test 'the token never appears in any argv' (-not ($argvLines -match $token) -and -not ((Get-Content $env:FAKE_MARKER -Raw) -match $token))
     Assert-Test 'the installer never prints the token' (-not ($result.Output -match $token))

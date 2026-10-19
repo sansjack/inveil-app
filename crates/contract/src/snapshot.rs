@@ -182,6 +182,37 @@ impl FailureModes {
     }
 }
 
+/// What the client's updater does with a new release.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateMode {
+    Off,
+    /// Check the feed and report, never download.
+    #[default]
+    Notify,
+    /// Download and stage; `inveil update --apply` installs.
+    Download,
+    Install,
+}
+
+/// Update policy chosen by the administrator. Each value set here replaces the local one. The feed URL, channel,
+/// pinned update keys and minimum signatures are deliberately absent: they stay local, so a backend cannot point a
+/// client at a binary its pinned keys did not sign, nor at a channel its feed does not publish.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields, default)]
+pub struct UpdatePolicy {
+    pub mode: Option<UpdateMode>,
+    pub check_hours: Option<u64>,
+}
+
+impl UpdatePolicy {
+    pub fn is_empty(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
 /// Policy knobs the backend enforces. Local configuration may only make them stricter.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
@@ -210,6 +241,9 @@ pub struct Settings {
     /// Block all chat traffic when the last good snapshot has expired and no fresh one can be fetched.
     pub fail_closed_on_expiry: bool,
     pub failure_modes: FailureModes,
+    /// Left out when empty: clients older than 0.2.2 reject a snapshot that carries this key.
+    #[serde(skip_serializing_if = "UpdatePolicy::is_empty")]
+    pub update: UpdatePolicy,
 }
 
 /// The payload of a signed rules response.
