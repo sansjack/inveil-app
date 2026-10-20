@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `inveil health`: one line per check (proxy running, rules current, AI tools covered), exit 1 if any fails. `inveil status` still works.
+- `inveil help --all` lists the administrator and developer commands, which the default `inveil help` no longer shows. They all still work.
+- `inveil install`, `uninstall` and `health` print live progress: a spinner per step, and a progress bar for `uninstall`. Piped output and `NO_COLOR` get plain lines.
+- `inveil uninstall` prints the command to delete the binary when it is not the copy the installer placed (or, on Windows, cannot delete itself).
+
+### Changed
+
+- `inveil update` now installs an available update; `inveil update --check` still only reports. `--apply` is accepted as before, and the service's scheduled check still follows `update.mode`.
+- A blocked chat request in the browser proxy now returns HTTP 403 instead of 400, with the error body each site understands (Anthropic's error object for claude.ai, `detail` for chatgpt.com). The web clients retried a 400 and showed nothing; a 403 shows the blocked message.
+
 ## [0.2.1] - 2026-10-19
 
 ### Changed
