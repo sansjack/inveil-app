@@ -353,13 +353,22 @@ fn execute(config: &Config, args: &[String], in_service: bool) -> Result<Outcome
     perform(&context, &HttpFetcher, &health, feed_url, action)
 }
 
-/// `inveil update [--check] [--apply]`: checks the feed and, depending on `update.mode`, downloads and applies. As a
+/// `inveil update [--check]`: with no flag, applies an available update; `--check` only reports. Needs
+/// `update.mode` of download or install to apply. As a
 /// separate process from the service it restarts the service itself and rolls back if the new version does not
 /// answer.
 ///
 /// Blocks on the network, so call it from `spawn_blocking` when inside the async runtime.
 pub fn run_update(config: &Config, args: &[String]) -> Result<String, UpdateError> {
-    execute(config, args, false).map(|outcome| outcome.to_string())
+    let mut args = args.to_vec();
+    // A person typing `inveil update` wants the update; only the service's scheduled check follows `update.mode`.
+    if !args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--check" | "--apply" | "--recover"))
+    {
+        args.push("--apply".to_string());
+    }
+    execute(config, &args, false).map(|outcome| outcome.to_string())
 }
 
 /// What the service should do after a scheduled check.

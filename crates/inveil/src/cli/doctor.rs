@@ -9,6 +9,7 @@
 use super::claude_settings;
 use super::install::{is_listening, is_running};
 use super::tool_settings::SettingsFile;
+use super::ui;
 use crate::config::Config;
 use crate::error::AppError;
 use crate::platform::{self, RuntimeKind};
@@ -407,6 +408,56 @@ pub fn run(config: &Config, json: bool) -> Result<ExitCode, AppError> {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
+    })
+}
+
+/// `inveil health`: the few things that must hold for protection to be on, one line each. Exit 1 if any fails; the
+/// per-tool detail is `inveil doctor`.
+pub fn health(config: &Config) -> Result<ExitCode, AppError> {
+    let runtime = Runtime::new(Arc::new(config.clone()))?;
+    let policy = runtime.initial_policy()?;
+    let facts = gather(config, &policy, &runtime.ca_directory());
+    let now = unix_seconds();
+    let report = assess(&policy, &facts, now);
+
+    ui::heading(&format!("inveil {} health", env!("CARGO_PKG_VERSION")));
+    let mut healthy = true;
+    let mut check = |ok: bool, label: &str, detail: &str| {
+        healthy &= ok;
+        ui::check(ok, label, if ok { "" } else { detail });
+    };
+    check(
+        report.proxy_running,
+        "Proxy running",
+        &format!(
+            "not answering on 127.0.0.1:{}; run `inveil install`",
+            facts.api_port
+        ),
+    );
+    check(
+        !report.snapshot.expired,
+        "Rules up to date",
+        "the organisation's rules have expired; check your network, then run `inveil doctor`",
+    );
+    let uncovered: Vec<&str> = report
+        .tools
+        .iter()
+        .filter(|tool| tool.status != Status::Covered)
+        .map(|tool| tool.name.as_str())
+        .collect();
+    check(
+        uncovered.is_empty(),
+        "AI tools covered",
+        &format!(
+            "{} of your AI tools need attention; run `inveil doctor`",
+            uncovered.len()
+        ),
+    );
+    println!();
+    Ok(if healthy {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     })
 }
 

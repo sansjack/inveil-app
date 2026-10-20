@@ -299,7 +299,7 @@ impl ChatHandler {
         let blocked = matches!(screened.outcome, Outcome::Block { .. });
         if counts_as_send || blocked || !screened.report.findings.is_empty() {
             let status = if blocked {
-                StatusCode::BAD_REQUEST
+                StatusCode::FORBIDDEN
             } else {
                 StatusCode::OK
             };
@@ -441,7 +441,7 @@ impl ChatHandler {
                 0,
             );
             self.finish(&screened, host, true);
-            return blocked_response(&unreadable_message(&why)).into();
+            return blocked_response(host, &unreadable_message(&why)).into();
         };
         let bytes = collected.to_bytes();
         let started = Instant::now();
@@ -474,7 +474,7 @@ impl ChatHandler {
                 parts.headers.remove(CONTENT_LENGTH);
                 Request::from_parts(parts, Body::from(Full::new(Bytes::from(rewritten)))).into()
             }
-            Outcome::Block { message, .. } => blocked_response(&message).into(),
+            Outcome::Block { message, .. } => blocked_response(host, &message).into(),
         }
     }
 }
@@ -600,11 +600,19 @@ pub(crate) fn forbidden_response(error: &GuardError) -> Response<Body> {
     )
 }
 
-fn blocked_response(message: &str) -> Response<Body> {
-    json_response(
-        StatusCode::BAD_REQUEST,
-        serde_json::json!({ "error": message }),
-    )
+/// 403, not 400: the sites' web clients retry a 400 and show nothing, but treat a 403 as a refusal and show the message.
+/// The body takes each site's own error shape so its UI can display the message: claude.ai parses Anthropic's
+/// error object and chatgpt.com reads `detail`. Other hosts get a plain `error` string.
+fn blocked_response(host: &str, message: &str) -> Response<Body> {
+    let body = match normalize_host(host).as_ref() {
+        "claude.ai" => serde_json::json!({
+            "type": "error",
+            "error": { "type": "permission_error", "message": message },
+        }),
+        "chatgpt.com" => serde_json::json!({ "detail": message }),
+        _ => serde_json::json!({ "error": message }),
+    };
+    json_response(StatusCode::FORBIDDEN, body)
 }
 
 impl HttpHandler for ChatHandler {

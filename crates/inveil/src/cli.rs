@@ -10,6 +10,7 @@ mod install;
 mod refetch;
 mod tool;
 mod tool_settings;
+mod ui;
 
 use crate::config::{self, Config, Override, Sources};
 use crate::error::AppError;
@@ -22,19 +23,29 @@ use std::sync::Arc;
 use toml::Value;
 
 pub const USAGE: &str = "\
-Usage: inveil [flags] <command>
+Usage: inveil <command>
 
 Commands:
-  run                 Start the proxy (the default)
+  install             Set everything up: the background service, tool settings and browser protection
+  uninstall           Remove everything inveil set up
+  health              Check that protection is on (exit 1 if not)
+  doctor [--json]     Say, per enabled tool, whether it is covered
+  update              Install the latest version
+  update --check      Say whether a newer version is available
+  version             Show the installed version
+
+Run `inveil help --all` for administrator and developer commands.";
+
+// ponytail: these commands are hidden from the default help but still work, because the install scripts and CI call
+// `enroll`, `verify` and `browser-setup`. Remove them (or fold them into `install`) once nothing calls them.
+pub const ADMIN_USAGE: &str = "\
+Administrator and developer commands:
+  run                 Start the proxy (the service runs this)
   run <command...>    Run a command with its HTTPS traffic routed through the browser proxy
-  install [--managed] Install the background service and point local tools at the proxy
-                      (--managed also writes Claude Code's machine-wide managed settings; needs admin rights)
-  uninstall           Remove everything: the service, browser protection, tool settings, keychain
-                      credentials, enrollment, cached rules, logs and the installed binary
+  install --managed   Also write Claude Code's machine-wide managed settings (needs admin rights)
   status              Say whether the proxy is running
   refetch             Fetch your organisation's latest rules now
-  doctor [--json]     Say, per enabled tool, whether it is covered (exit 1 if one is not)
-  discover T --record Record the hosts, paths and content types a tool sends (developers; off without --record)
+  discover T --record Record the hosts, paths and content types a tool sends (off without --record)
   login | logout | whoami
   enroll --bundle F   Redeem an enrollment bundle (enrollment.json; F can be - for stdin)
   init [--force]      Write inveil.toml and an example rules file here (use them with --config, or move
@@ -42,8 +53,7 @@ Commands:
   browser-setup       Let the browser proxy read AI chat sites (creates and trusts a local CA)
   browser-remove      Undo browser-setup
   keygen | sign | verify  Generate a signing key; sign or check a policy or update file
-  update [--check|--apply|--recover]  Check for, apply, or recover an update
-  version
+  update --recover    Restore a missing install after a failed update
 
 Flags:
   --config FILE       Use this configuration file (without it only the per-user file is read)
@@ -59,6 +69,7 @@ pub enum Command {
     Install { managed: bool },
     Uninstall,
     Status,
+    Health,
     Refetch,
     Doctor { json: bool },
     Discover { target: String, record: bool },
@@ -75,6 +86,7 @@ pub enum Command {
     Update(Vec<String>),
     Version,
     Help,
+    HelpAll,
 }
 
 pub struct Cli {
@@ -195,6 +207,7 @@ impl Cli {
         let mut force = false;
         let mut managed = false;
         let mut json = false;
+        let mut all = false;
         let mut record = false;
         let mut discover_target = None;
         let mut tool: Vec<String> = vec![];
@@ -208,6 +221,7 @@ impl Cli {
             }
             match argument.as_str() {
                 help if is_help(help) => return Ok(Command::Help),
+                "--all" if name == "help" => all = true,
                 "--bundle" if name == "enroll" => {
                     bundle = Some(PathBuf::from(
                         arguments
@@ -241,6 +255,7 @@ impl Cli {
             }),
             "uninstall" => Ok(Command::Uninstall),
             "status" => Ok(Command::Status),
+            "health" => Ok(Command::Health),
             "refetch" => Ok(Command::Refetch),
             "login" => Ok(Command::Login),
             "logout" => Ok(Command::Logout),
@@ -252,6 +267,7 @@ impl Cli {
             "browser-setup" => Ok(Command::BrowserSetup),
             "browser-remove" => Ok(Command::BrowserRemove),
             "version" => Ok(Command::Version),
+            "help" if all => Ok(Command::HelpAll),
             "help" => Ok(Command::Help),
             other => Err(usage_error(format!("unknown command {other}\n\n{USAGE}"))),
         }
@@ -292,6 +308,7 @@ pub async fn dispatch(cli: Cli, config: Config) -> Result<ExitCode, AppError> {
         Command::Install { managed } => install::install(config, managed).await?,
         Command::Uninstall => install::uninstall(config)?,
         Command::Status => install::status(&config)?,
+        Command::Health => return doctor::health(&config),
         Command::Refetch => refetch::refetch(&config).await?,
         Command::Doctor { json } => return doctor::run(&config, json),
         Command::Discover { target, record } => discover::run(config, &target, record).await?,
@@ -311,6 +328,7 @@ pub async fn dispatch(cli: Cli, config: Config) -> Result<ExitCode, AppError> {
         }
         Command::Version => format!("inveil {}", env!("CARGO_PKG_VERSION")),
         Command::Help => USAGE.to_string(),
+        Command::HelpAll => format!("{USAGE}\n\n{ADMIN_USAGE}"),
     };
     println!("{message}");
     Ok(ExitCode::SUCCESS)
@@ -428,6 +446,13 @@ mod tests {
                 record: false
             }
         );
+    }
+
+    #[test]
+    fn health_and_help_all_are_commands() {
+        assert_eq!(parse("health").unwrap().command, Command::Health);
+        assert_eq!(parse("help --all").unwrap().command, Command::HelpAll);
+        assert_eq!(parse("help").unwrap().command, Command::Help);
     }
 
     #[test]

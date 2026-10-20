@@ -1,6 +1,6 @@
 //! `inveil install | uninstall | status`: the per-user background service, and pointing local tools at the proxy.
 use super::tool_settings::{check_entry, SettingsFile};
-use super::{browser, claude_settings};
+use super::{browser, claude_settings, ui};
 use crate::backend::{self, BackendError, CredentialProvider};
 use crate::config::{AuthMode, Config};
 use crate::error::AppError;
@@ -117,10 +117,109 @@ pub async fn install(config: Config, managed: bool) -> Result<String, AppError> 
         return install_managed(config);
     }
     let runtime = Runtime::new(Arc::new(config))?;
+    ui::heading("Installing inveil");
     ensure_signed_in(&runtime).await?;
-    let policy = runtime.latest_policy().await?;
+
+    let step = ui::Step::start("Fetching your organisation's rules");
+    let policy = match runtime.latest_policy().await {
+        Ok(policy) => policy,
+        Err(error) => {
+            step.fail(&error.to_string());
+            return Err(error);
+        }
+    };
+    step.done("");
     let port = runtime.config.listen.port;
 
+    let log = ui::step(
+        "Installing the background service",
+        || install_service(&runtime),
+        |log| format!("log: {}", log.display()),
+    )?;
+
+    let tool_name = |id: &str| {
+        let tool = policy.policy.tools.iter().find(|tool| tool.id == id);
+        tool.map_or(id.to_string(), |tool| tool.name.clone())
+    };
+    let mut wired = vec![];
+    let mut manual_steps = vec![];
+    for tool in policy.policy.local_tool_wiring() {
+        let url = claude_settings::proxy_url(port, tool.prefix);
+        check_entry(tool.tool_id, tool.env_var, &url)?;
+        match SettingsFile::for_tool(tool.tool_id) {
+            Some(file) => {
+                let step = ui::Step::start(&format!(
+                    "Pointing {} at the proxy",
+                    tool_name(tool.tool_id)
+                ));
+                match file.set(tool.env_var, &url) {
+                    Ok(()) => step.done(""),
+                    Err(error) => {
+                        step.fail(&error.to_string());
+                        return Err(error);
+                    }
+                }
+                wired.push(tool_name(tool.tool_id));
+            }
+            None => manual_steps.push(format!(
+                "{}: export {}={url}",
+                tool_name(tool.tool_id),
+                tool.env_var
+            )),
+        }
+    }
+    let browser_tools: Vec<String> = policy
+        .policy
+        .tools
+        .iter()
+        .filter(|tool| tool.enabled && tool.via == Via::Browser)
+        .map(|tool| tool.name.clone())
+        .collect();
+
+    let step = ui::Step::start("Waiting for the proxy to start");
+    if !wait_until_running(port).await {
+        step.fail(&format!("not responding on port {port}"));
+        return Err(AppError::Usage(format!(
+            "installed, but the proxy is not responding on port {port}; see {}",
+            log.display()
+        )));
+    }
+    step.done(&format!("listening on 127.0.0.1:{port}"));
+
+    // The organisation enabled browser tools, so set up the browser CA now: install is interactive and the OS may ask
+    // the user to approve trusting it, which the background service cannot do.
+    if !browser_tools.is_empty() {
+        let step = ui::Step::start(&format!(
+            "Protecting {} in the browser",
+            browser_tools.join(", ")
+        ));
+        match browser::setup(runtime.config.as_ref().clone()).await {
+            Ok(notes) => {
+                step.done("");
+                ui::note(&notes);
+            }
+            Err(error) => {
+                step.warn(&format!("NOT set up: {error}"));
+                ui::note("Run `inveil browser-setup` to retry.");
+            }
+        }
+    }
+    let mut message = String::new();
+    if !wired.is_empty() {
+        message.push_str("\nRestart any open session of these tools: ");
+        message.push_str(&wired.join(", "));
+    }
+    if !manual_steps.is_empty() {
+        message.push_str(&format!(
+            "\nThese tools have no settings file inveil can write; set the variable yourself:\n  {}",
+            manual_steps.join("\n  ")
+        ));
+    }
+    Ok(format!("\ninveil is active.{message}"))
+}
+
+/// Copies this executable to its permanent place and registers the service; returns the log path.
+fn install_service(runtime: &Runtime) -> Result<PathBuf, AppError> {
     std::fs::create_dir_all(&runtime.data_dir).map_err(|source| AppError::WriteFile {
         path: runtime.data_dir.clone(),
         source,
@@ -141,74 +240,7 @@ pub async fn install(config: Config, managed: bool) -> Result<String, AppError> 
     }
     let log = platform::default_log_path()?;
     platform::install_service(&executable, &log)?;
-
-    let tool_name = |id: &str| {
-        let tool = policy.policy.tools.iter().find(|tool| tool.id == id);
-        tool.map_or(id.to_string(), |tool| tool.name.clone())
-    };
-    let mut wired = vec![];
-    let mut manual_steps = vec![];
-    for tool in policy.policy.local_tool_wiring() {
-        let url = claude_settings::proxy_url(port, tool.prefix);
-        check_entry(tool.tool_id, tool.env_var, &url)?;
-        match SettingsFile::for_tool(tool.tool_id) {
-            Some(file) => {
-                file.set(tool.env_var, &url)?;
-                wired.push(tool_name(tool.tool_id));
-            }
-            None => manual_steps.push(format!(
-                "{}: export {}={url}",
-                tool_name(tool.tool_id),
-                tool.env_var
-            )),
-        }
-    }
-    let browser_tools: Vec<String> = policy
-        .policy
-        .tools
-        .iter()
-        .filter(|tool| tool.enabled && tool.via == Via::Browser)
-        .map(|tool| tool.name.clone())
-        .collect();
-
-    if !wait_until_running(port).await {
-        return Err(AppError::Usage(format!(
-            "installed, but the proxy is not responding on port {port}; see {}",
-            log.display()
-        )));
-    }
-
-    let mut message = format!(
-        "inveil is active on 127.0.0.1:{port}. Log: {}",
-        log.display()
-    );
-    if !wired.is_empty() {
-        message.push_str(&format!(
-            "\nSet up: {}. Restart any open session of these tools.",
-            wired.join(", ")
-        ));
-    }
-    if !manual_steps.is_empty() {
-        message.push_str(&format!(
-            "\nThese tools have no settings file inveil can write; set the variable yourself:\n  {}",
-            manual_steps.join("\n  ")
-        ));
-    }
-    // The organisation enabled browser tools, so set up the browser CA now: install is interactive and the OS may ask
-    // the user to approve trusting it, which the background service cannot do.
-    if !browser_tools.is_empty() {
-        match browser::setup(runtime.config.as_ref().clone()).await {
-            Ok(notes) => message.push_str(&format!(
-                "\nBrowser protection for {}:\n{notes}",
-                browser_tools.join(", ")
-            )),
-            Err(error) => message.push_str(&format!(
-                "\nBrowser protection for {} is NOT set up: {error}\nRun `inveil browser-setup` to retry.",
-                browser_tools.join(", ")
-            )),
-        }
-    }
-    Ok(message)
+    Ok(log)
 }
 
 async fn wait_until_running(port: u16) -> bool {
@@ -263,35 +295,56 @@ pub fn uninstall(config: Config) -> Result<String, AppError> {
         return uninstall_managed();
     }
     let runtime = Runtime::new(Arc::new(config))?;
+    ui::heading("Removing inveil");
+    let has_browser_setup = runtime.ca_directory().exists();
+    let progress = ui::Progress::start(if has_browser_setup { 5 } else { 4 });
+    let mut notes = vec![];
     // Browser protection first: it trusts a CA, which must not outlive the client.
-    let browser_notes = if runtime.ca_directory().exists() {
-        Some(browser::remove(runtime.config.as_ref().clone())?)
+    if has_browser_setup {
+        let browser_notes = progress.step("Removing browser protection", || {
+            browser::remove(runtime.config.as_ref().clone())
+        })?;
+        progress.note(&browser_notes);
+    }
+    progress.step(
+        "Removing the background service",
+        platform::uninstall_service,
+    )?;
+    progress.step("Restoring tool settings", || remove_tool_settings(&runtime))?;
+    if !claude_settings::remove_managed(&claude_settings::managed_path())? {
+        notes.push(format!(
+            "Could not delete {}: run `inveil uninstall` again from an elevated shell; it then removes only that file.",
+            claude_settings::managed_path().display()
+        ));
+    }
+    let keychain_notes = progress.step("Removing stored credentials", || {
+        Ok::<_, AppError>(remove_keychain_items(&runtime))
+    })?;
+    notes.extend(keychain_notes);
+    let file_notes = progress.step("Removing local files", || remove_local_files(&runtime))?;
+    notes.extend(file_notes);
+    progress.finish();
+    notes.push("\ninveil removed. Local tools talk to their APIs directly again.".to_string());
+    Ok(notes.join("\n"))
+}
+
+/// How to delete a binary that uninstall cannot (or must not) delete itself.
+fn delete_command(path: &Path) -> String {
+    if cfg!(windows) {
+        format!("Remove-Item \"{}\"", path.display())
     } else {
-        None
-    };
-    platform::uninstall_service()?;
+        format!("rm \"{}\"", path.display())
+    }
+}
+
+fn remove_tool_settings(runtime: &Runtime) -> Result<(), AppError> {
     let policy = runtime.initial_policy()?;
     for tool in policy.policy.local_tool_wiring() {
         if let Some(file) = SettingsFile::for_tool(tool.tool_id) {
             file.remove(tool.env_var)?;
         }
     }
-    let managed_note = if claude_settings::remove_managed(&claude_settings::managed_path())? {
-        None
-    } else {
-        Some(format!(
-            "Could not delete {}: run `inveil uninstall` again from an elevated shell; it then removes only that file.",
-            claude_settings::managed_path().display()
-        ))
-    };
-    let mut notes: Vec<String> = [browser_notes, managed_note]
-        .into_iter()
-        .flatten()
-        .collect();
-    notes.extend(remove_keychain_items(&runtime));
-    notes.extend(remove_local_files(&runtime)?);
-    notes.push("inveil removed. Local tools talk to their APIs directly again.".to_string());
-    Ok(notes.join("\n"))
+    Ok(())
 }
 
 /// The backend credentials and the rollback anchors of the state files. A keychain that cannot be reached does not
@@ -345,10 +398,16 @@ fn remove_local_files(runtime: &Runtime) -> Result<Vec<String>, AppError> {
             source,
         })
     });
-    let (Ok(executable), Ok(bin_dir)) = (executable, bin_dir) else {
+    let Ok(executable) = executable else {
         return Ok(notes);
     };
-    if executable.parent() != Some(bin_dir.as_path()) {
+    let is_installer_binary =
+        bin_dir.is_ok_and(|directory| executable.parent() == Some(directory.as_path()));
+    if !is_installer_binary {
+        notes.push(format!(
+            "This copy of inveil was not placed by the installer, so it was left in place. Delete it with:\n  {}",
+            delete_command(&executable)
+        ));
         return Ok(notes);
     }
     for suffix in [".prev", ".new"] {
@@ -359,8 +418,8 @@ fn remove_local_files(runtime: &Runtime) -> Result<Vec<String>, AppError> {
     if cfg!(windows) {
         // A running executable cannot be deleted on Windows.
         notes.push(format!(
-            "Delete {} once this command has exited.",
-            executable.display()
+            "Delete the program once this command has exited:\n  {}",
+            delete_command(&executable)
         ));
         return Ok(notes);
     }

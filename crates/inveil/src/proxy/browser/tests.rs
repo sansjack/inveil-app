@@ -61,9 +61,31 @@ async fn blocks_a_chat_with_an_ssn_over_real_https_and_trusts_only_the_ca() {
         .send()
         .await
         .expect("TLS through the proxy works, so the leaf certificate is valid for chatgpt.com");
-    assert_eq!(response.status(), 400);
+    assert_eq!(response.status(), 403);
     assert!(response.text().await.unwrap().contains("INVEIL BLOCKED"));
     assert!(proxy.audit_text().contains("\"action\":\"block\""));
+}
+
+#[tokio::test]
+async fn a_block_uses_the_error_shape_each_site_can_display() {
+    let cases = [
+        (
+            "claude.ai",
+            serde_json::json!({"type": "error", "error": {"type": "permission_error", "message": "blocked"}}),
+        ),
+        ("chatgpt.com", serde_json::json!({"detail": "blocked"})),
+        ("grok.com", serde_json::json!({"error": "blocked"})),
+    ];
+    for (host, expected) in cases {
+        let response = blocked_response(host, "blocked");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{host}");
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&body).unwrap(),
+            expected,
+            "{host}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -171,7 +193,7 @@ async fn a_body_that_cannot_be_read_is_blocked() {
         )
         .await;
     assert!(
-        matches!(response, RequestOrResponse::Response(response) if response.status() == StatusCode::BAD_REQUEST)
+        matches!(response, RequestOrResponse::Response(response) if response.status() == StatusCode::FORBIDDEN)
     );
 }
 
