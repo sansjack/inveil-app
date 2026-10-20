@@ -435,7 +435,7 @@ checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "contract"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "schemars",
  "serde",
@@ -666,7 +666,7 @@ checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
 name = "engine"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -1231,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "inveil"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "axum",
  "base64 0.22.1",

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-20
+
 ### Added
 
 - `inveil health`: one line per check (proxy running, rules current, AI tools covered), exit 1 if any fails. `inveil status` still works.
@@ -47,6 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - macOS, Windows and Linux support.
 - Documentation, community files and release pipeline with SBOM, checksums and build provenance.
 
-[Unreleased]: https://github.com/sansjack/inveil-app/compare/v0.2.1...main
+[Unreleased]: https://github.com/sansjack/inveil-app/compare/v0.3.1...main
+[0.3.1]: https://github.com/sansjack/inveil-app/releases/tag/v0.3.1
 [0.2.1]: https://github.com/sansjack/inveil-app/releases/tag/v0.2.1
 [0.2.0]: https://github.com/sansjack/inveil-app/releases/tag/v0.2.0
