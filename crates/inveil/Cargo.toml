@@ -23,7 +23,7 @@ base64.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 toml = "0.8"
-toml_edit = "0.22"
+toml_edit = "0.25"
 semver = "1"
 regex = "1"
 axum = "0.7"
